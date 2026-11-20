@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { TriangleAlert } from "lucide-react";
 import { api, ApiError, post } from "./client";
 import { aplicarMarca, rutaAcceso } from "./branding";
 import type { Me } from "./types";
@@ -25,7 +26,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const m = await api<Me>("auth/me");
       setMe(m);
       aplicarMarca(m.empresa);
-      document.title = m.empresa ? m.empresa.nombre_app || m.empresa.nombre : "TOROIN · Plataforma";
+      document.title = m.empresa ? m.empresa.nombre_app || m.empresa.nombre : "Plataforma";
       const ic = m.empresa?.icono;
       if (ic) {
         let l = document.querySelector<HTMLLinkElement>("link[rel='icon']");
@@ -39,7 +40,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [router]);
 
-  useEffect(() => { void recargar(); }, [recargar]);
+  useEffect(() => { void Promise.resolve().then(recargar); }, [recargar]);
 
   // Quien debe cambiar su clave temporal no navega a ningún otro lado
   useEffect(() => {
@@ -53,14 +54,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   if (error && !me)
     return (
-      <div className="grid min-h-screen place-items-center p-6 text-center">
-        <div className="max-w-md space-y-4">
-          <p className="text-lg font-semibold text-slate-800">{error}</p>
-          <button onClick={salir} className="rounded-lg bg-slate-800 px-4 py-2 text-white">Volver al inicio de sesión</button>
+      <div className="grid min-h-dvh place-items-center p-6 text-center">
+        <div className="flex max-w-md flex-col items-center gap-4">
+          <span className="rounded-full bg-error-50 p-3 text-error"><TriangleAlert className="size-6" aria-hidden /></span>
+          <p className="text-lg font-semibold text-tinta">{error}</p>
+          <button onClick={salir} className="min-h-11 rounded-lg bg-marca px-4 font-semibold text-sobre-marca hover:bg-marca-700">Volver al inicio de sesión</button>
         </div>
       </div>
     );
-  if (!me) return <div className="grid min-h-screen place-items-center text-slate-500">Cargando…</div>;
+  if (!me)
+    return (
+      <div role="status" aria-label="Cargando" className="grid min-h-dvh place-items-center">
+        <span className="size-8 animate-spin rounded-full border-[3px] border-marca-100 border-t-marca" aria-hidden />
+      </div>
+    );
 
   return (
     <SessionCtx.Provider value={{ me, recargar, salir, tieneModulo: (m) => me.modulos.includes(m) }}>{children}</SessionCtx.Provider>

@@ -28,13 +28,13 @@ export function ImagenInput({ etiqueta, valor, onChange, maxLado = 480, fondoOsc
   const [error, setError] = useState("");
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-sm font-medium text-slate-700">{etiqueta}</span>
-      <div className={`grid h-24 place-items-center rounded-lg border border-dashed border-slate-300 ${fondoOscuro ? "bg-slate-800" : "bg-slate-50"}`}>
-        {valor ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={valor} alt={etiqueta} className="max-h-20 max-w-[85%] object-contain" /> : <span className="text-xs text-slate-400">Sin imagen</span>}
+      <span className="text-sm font-medium text-texto">{etiqueta}</span>
+      <div className={`grid h-24 place-items-center rounded-lg border border-dashed border-borde-campo/60 ${fondoOscuro ? "bg-marca" : "bg-fondo"}`}>
+        {valor ?  <img src={valor} alt={etiqueta} className="max-h-20 max-w-[85%] object-contain" /> : <span className="text-xs text-placeholder">Sin imagen</span>}
       </div>
       <div className="flex gap-2">
-        <Boton type="button" variante="secundario" className="!min-h-9 flex-1" onClick={() => ref.current?.click()}>{valor ? "Cambiar" : "Subir"}</Boton>
-        {valor && <Boton type="button" variante="fantasma" className="!min-h-9" onClick={() => onChange(null)}>Quitar</Boton>}
+        <Boton type="button" variante="secundario" tam="sm" className="flex-1" onClick={() => ref.current?.click()}>{valor ? "Cambiar" : "Subir"}</Boton>
+        {valor && <Boton type="button" variante="fantasma" tam="sm" onClick={() => onChange(null)}>Quitar</Boton>}
       </div>
       <input ref={ref} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden
         onChange={async (e) => {
@@ -43,7 +43,7 @@ export function ImagenInput({ etiqueta, valor, onChange, maxLado = 480, fondoOsc
           setError("");
           try { onChange(await procesar(f, maxLado)); } catch (x) { setError(x instanceof Error ? x.message : "No se pudo leer la imagen"); }
         }} />
-      {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+      {error && <p role="alert" className="text-xs text-error">{error}</p>}
     </div>
   );
 }

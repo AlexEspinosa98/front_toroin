@@ -1,118 +1,205 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Info, Plus, Receipt, Trash2, TrendingUp, Wallet } from "lucide-react";
 import { api } from "@/lib/client";
 import { useSession } from "@/lib/session";
 import { fechaCorta, fmtCOP, fmtMillones, fmtPct } from "@/lib/format";
-import { hoy } from "@/lib/fechas";
-import { Aviso, Boton, Campo, Input, Select, Tabla, Tarjeta, Titulo, Vacio, useAviso } from "@/components/ui";
-import { Indicador } from "@/components/comunes";
+import { hoy, nombreMes } from "@/lib/fechas";
+import { useObras } from "@/lib/obras";
+import { ANIMAR, Aviso, Boton, BotonIcono, Campo, COLOR_GRAFICA, Esqueleto, Input, Modal, Segmentado, Select, Tarjeta, Titulo, Vacio, enfocarPrimerError, useAviso, useConfirmar } from "@/components/ui";
+import { Indicador, SelectorObra } from "@/components/comunes";
 
-type Obra = { id: string; nombre: string };
 type Res = { ingresos_proyectados: number; facturado: number; por_facturar: number; gastos: number; gasto_proyectado: number; utilidad_actual: number; utilidad_proyectada: number; margen_proyectado: number; rete_garantia_retenida: number; obra_ejecutada: number; avance_fisico: number; metodo: string };
-type Fin = { obra: Obra; tiene_contrato: boolean; resumen: Res; facturas: { id: string; numero: string; fecha: string; concepto: string; valor: number }[]; gastos: { id: string; fecha: string; categoria: string; descripcion: string; valor: number }[]; meses: { mes: string; facturado: number; gastos: number }[]; categorias: string[] };
+type Fin = { obra: { id: string; nombre: string }; tiene_contrato: boolean; resumen: Res; facturas: { id: string; numero: string; fecha: string; concepto: string; valor: number }[]; gastos: { id: string; fecha: string; categoria: string; descripcion: string; valor: number }[]; meses: { mes: string; facturado: number; gastos: number }[]; categorias: string[] };
+type Tipo = "factura" | "gasto";
+
+const nuevoForm = (cat = "Otros") => ({ fecha: hoy(), valor: "", texto: "", numero: "", categoria: cat });
+/** Acepta «1.250.000» o «1250000,50» */
+const aNumero = (s: string) => Number(s.replace(/\./g, "").replace(",", "."));
 
 export default function Finanzas() {
   const { me } = useSession();
   const aviso = useAviso();
-  const [obras, setObras] = useState<Obra[]>([]);
-  const [obraId, setObraId] = useState("");
-  const [d, setD] = useState<Fin | null>(null);
+  const confirmar = useConfirmar();
+  const { obras, cargando, obraId, setObraId, error: errObras } = useObras();
+  const [res, setRes] = useState<{ obraId: string; d: Fin } | null>(null);
   const [error, setError] = useState("");
-  const [fac, setFac] = useState({ numero: "", fecha: hoy(), concepto: "", valor: "" });
-  const [gas, setGas] = useState({ fecha: hoy(), categoria: "Otros", descripcion: "", valor: "" });
   const [ing, setIng] = useState("");
+  const [vista, setVista] = useState<Tipo>("gasto");
+  const [nuevo, setNuevo] = useState<Tipo>();
+  const [form, setForm] = useState(nuevoForm());
+  const [intento, setIntento] = useState(false);
   const puede = !me.solo_lectura && me.licencia?.escritura && ["admin", "gerencia", "super_admin"].includes(me.rol);
 
-  useEffect(() => { api<Obra[]>("obras").then((o) => { setObras(o); setObraId((x) => x || o[0]?.id || ""); }).catch((e) => setError(e.message)); }, []);
-  const cargar = useCallback(() => {
+  useEffect(() => {
     if (!obraId) return;
-    api<Fin>(`obras/${obraId}/finanzas`).then((r) => { setD(r); setIng(String(r.resumen.ingresos_proyectados || "")); setError(""); }).catch((e) => setError(e.message));
+    let vivo = true;
+    api<Fin>(`obras/${obraId}/finanzas`).then((r) => { if (vivo) { setRes({ obraId, d: r }); setIng(String(r.resumen.ingresos_proyectados || "")); setError(""); } }).catch((e) => vivo && setError(e.message));
+    return () => { vivo = false; };
   }, [obraId]);
-  useEffect(() => { setD(null); cargar(); }, [cargar]);
+  const d = res?.obraId === obraId ? res.d : null;
 
-  async function enviar(ruta: string, body: unknown, method = "POST", ok = "Guardado") {
-    try { const r = await api<Fin>(ruta, { method, body }); setD(r); setIng(String(r.resumen.ingresos_proyectados || "")); aviso(ok); return true; }
+  const enviar = useCallback(async (ruta: string, body: unknown, method = "POST", ok = "Guardado") => {
+    try { const r = await api<Fin>(ruta, { method, body }); setRes({ obraId, d: r }); setIng(String(r.resumen.ingresos_proyectados || "")); aviso(ok); return true; }
     catch (x) { aviso(x instanceof Error ? x.message : "Error", "error"); return false; }
+  }, [obraId, aviso]);
+
+  const serie = useMemo(() => (d?.meses ?? []).map((m) => ({ mes: `${nombreMes(Number(m.mes.slice(5))).slice(0, 3)} ${m.mes.slice(2, 4)}`, Facturado: Math.round(m.facturado / 1e5) / 10, Gastos: Math.round(m.gastos / 1e5) / 10 })), [d]);
+  const porCat = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const g of d?.gastos ?? []) m.set(g.categoria, (m.get(g.categoria) ?? 0) + g.valor);
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  }, [d]);
+
+  const valor = aNumero(form.valor);
+  const errValor = !(valor > 0) ? "Ingrese un valor mayor a cero" : undefined;
+  const errTexto = !form.texto.trim() ? (nuevo === "factura" ? "Ingrese el concepto" : "Ingrese la descripción") : undefined;
+  const abrir = (t: Tipo) => { setForm(nuevoForm(d?.categorias.includes("Otros") ? "Otros" : d?.categorias[0])); setIntento(false); setNuevo(t); };
+  async function guardar(e: React.FormEvent) {
+    e.preventDefault();
+    setIntento(true);
+    if (errValor || errTexto || !nuevo) return enfocarPrimerError(document.querySelector("dialog[open]"));
+    const ok = nuevo === "factura"
+      ? await enviar(`obras/${obraId}/facturas`, { numero: form.numero.trim(), fecha: form.fecha, concepto: form.texto.trim(), valor }, "POST", "Factura registrada")
+      : await enviar(`obras/${obraId}/gastos`, { fecha: form.fecha, categoria: form.categoria, descripcion: form.texto.trim(), valor }, "POST", "Gasto registrado");
+    if (ok) setNuevo(undefined);
   }
+  async function quitar(tipo: Tipo, id: string, texto: string, v: number) {
+    if (!(await confirmar({ titulo: "¿Eliminar este movimiento?", texto: `${texto} · ${fmtCOP(v)}`, aceptar: "Eliminar", peligro: true }))) return;
+    await enviar(`${tipo === "gasto" ? "gastos" : "facturas"}/${id}`, undefined, "DELETE", "Movimiento eliminado");
+  }
+
   const r = d?.resumen;
-  const max = Math.max(1, ...(d?.meses ?? []).flatMap((m) => [m.facturado, m.gastos]));
+  const movimientos = (vista === "gasto"
+    ? (d?.gastos ?? []).map((g) => ({ id: g.id, fecha: g.fecha, t: g.descripcion || g.categoria, sub: g.categoria, v: g.valor }))
+    : (d?.facturas ?? []).map((f) => ({ id: f.id, fecha: f.fecha, t: f.concepto || "Factura", sub: f.numero ? `Factura ${f.numero}` : "Factura", v: f.valor }))
+  ).sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   return (
     <>
-      <Titulo sub="Ingresos, facturación, gastos y margen proyectado por obra">Finanzas</Titulo>
-      <div className="max-w-md"><Campo etiqueta="Obra"><Select value={obraId} onChange={(e) => setObraId(e.target.value)}>{obras.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}</Select></Campo></div>
-      {error && <div className="mt-3"><Aviso tono="error">{error}</Aviso></div>}
-      {!obras.length && !error && <div className="mt-4"><Vacio>Primero cree una obra.</Vacio></div>}
+      <Titulo sub="Ingresos proyectados, facturas causadas y gastos operacionales"
+        acciones={puede && d && (
+          <>
+            <Boton variante="secundario" icono={<Receipt className="size-4" aria-hidden />} onClick={() => abrir("factura")}>Factura</Boton>
+            <Boton icono={<Plus className="size-4" aria-hidden />} onClick={() => abrir("gasto")}>Gasto</Boton>
+          </>
+        )}>Control financiero</Titulo>
+
+      <SelectorObra className="mb-5 max-w-sm" obras={obras} valor={obraId} onChange={setObraId} />
+      {(error || errObras) && <Aviso tono="error">{error || errObras}</Aviso>}
+      {!cargando && !obras.length && !errObras && <Vacio icono={<Wallet className="size-6" aria-hidden />} titulo="Primero cree una obra" texto="El control financiero se lleva obra por obra." />}
+      {obraId && !d && !error && <div className="space-y-3"><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <Esqueleto key={i} className="h-28" />)}</div><Esqueleto className="h-64" /></div>}
+
       {d && r && (
         <>
-          {!d.tiene_contrato && <div className="mt-3"><Aviso tono="alerta">Esta obra no tiene contrato cargado; el avance y los ingresos se toman de lo que digite abajo.</Aviso></div>}
-          <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Indicador etiqueta="Ingresos proyectados" valor={fmtMillones(r.ingresos_proyectados)} />
-            <Indicador etiqueta="Facturado" valor={fmtMillones(r.facturado)} detalle={`Por facturar: ${fmtMillones(r.por_facturar)}`} />
-            <Indicador etiqueta="Gastos a la fecha" valor={fmtMillones(r.gastos)} detalle={`Proyectado: ${fmtMillones(r.gasto_proyectado)}`} />
-            <Indicador etiqueta="Utilidad proyectada" valor={fmtMillones(r.utilidad_proyectada)} detalle={`Margen ${fmtPct(r.margen_proyectado, 1)}`} tono={r.utilidad_proyectada < 0 ? "error" : "ok"} />
+          {!d.tiene_contrato && <div className="mb-4"><Aviso tono="alerta">Esta obra no tiene contrato cargado; el avance y los ingresos se toman de lo que digite abajo.</Aviso></div>}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Indicador etiqueta="Ingresos proyectados" valor={fmtMillones(r.ingresos_proyectados)} detalle="Valor total del contrato" icono={<Wallet className="size-5" aria-hidden />} />
+            <Indicador etiqueta="Facturado (causado)" valor={fmtMillones(r.facturado)} detalle={r.ingresos_proyectados ? `${fmtPct(r.facturado / r.ingresos_proyectados)} del contrato · por facturar ${fmtMillones(r.por_facturar)}` : `Por facturar ${fmtMillones(r.por_facturar)}`} icono={<Receipt className="size-5" aria-hidden />} />
+            <Indicador etiqueta="Gastos operacionales" valor={fmtMillones(r.gastos)} detalle={`Proyectado al cierre: ${fmtMillones(r.gasto_proyectado)}`} tono="alerta" />
+            <Indicador etiqueta="Utilidad proyectada" valor={fmtMillones(r.utilidad_proyectada)} detalle={`Margen proyectado ${fmtPct(r.margen_proyectado, 1)}`} tono={r.utilidad_proyectada < 0 ? "error" : "ok"} icono={<TrendingUp className="size-5" aria-hidden />} />
           </div>
-          <p className="mt-2 text-xs text-slate-500">{r.metodo}. Retegarantía retenida estimada: {fmtCOP(r.rete_garantia_retenida)}. Utilidad actual (facturado − gastos): {fmtCOP(r.utilidad_actual)}.</p>
-          {puede && (
-            <div className="mt-4 flex max-w-md items-end gap-2">
-              <Campo etiqueta="Ingresos proyectados (opcional)" ayuda="Si lo deja vacío se usa el valor del contrato"><Input type="number" min={0} value={ing} onChange={(e) => setIng(e.target.value)} /></Campo>
-              <Boton variante="secundario" onClick={() => enviar(`obras/${obraId}/ingresos`, { ingresos_proyectados: ing === "" ? null : Number(ing) }, "PUT")}>Guardar</Boton>
-            </div>
-          )}
-          {d.meses.length > 0 && (
-            <div className="mt-6"><Tarjeta titulo="Facturado vs. gastos por mes">
-              <div className="flex items-end gap-4 overflow-x-auto pb-1">
-                {d.meses.map((m) => (
-                  <div key={m.mes} className="flex min-w-14 flex-col items-center gap-1">
-                    <div className="flex h-32 items-end gap-1">
-                      <div title={`Facturado ${fmtCOP(m.facturado)}`} className="w-4 rounded-t bg-emerald-500" style={{ height: `${(m.facturado / max) * 100}%` }} />
-                      <div title={`Gastos ${fmtCOP(m.gastos)}`} className="w-4 rounded-t bg-amber-500" style={{ height: `${(m.gastos / max) * 100}%` }} />
-                    </div>
-                    <span className="text-xs text-slate-500">{m.mes}</span>
+          <p className="mt-2 flex items-start gap-1.5 text-xs text-suave"><Info className="mt-0.5 size-3.5 shrink-0" aria-hidden /> {r.metodo}. Utilidad proyectada = ingresos proyectados − gasto proyectado.</p>
+
+          <div className="mt-5 grid gap-5 lg:grid-cols-3">
+            <Tarjeta titulo="Facturado vs. gastos por mes" sub="Millones de pesos" className="lg:col-span-2">
+              {serie.length === 0 ? (
+                <Vacio icono={<Receipt className="size-6" aria-hidden />} titulo="Aún no hay movimientos" texto="Registre facturas y gastos para ver la comparación mensual." />
+              ) : (
+                <>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={serie} margin={{ left: -12, right: 8, top: 8 }}>
+                        <CartesianGrid vertical={false} stroke={COLOR_GRAFICA.rejilla} />
+                        <XAxis dataKey="mes" tick={{ fontSize: 12, fill: COLOR_GRAFICA.eje }} tickLine={false} axisLine={false} />
+                        <YAxis tick={{ fontSize: 12, fill: COLOR_GRAFICA.eje }} tickLine={false} axisLine={false} />
+                        <Tooltip formatter={(v) => `$${v} M`} cursor={{ fill: "var(--marca-50)" }} />
+                        <Bar isAnimationActive={ANIMAR} dataKey="Facturado" fill={COLOR_GRAFICA.uno} radius={[4, 4, 0, 0]} />
+                        <Bar isAnimationActive={ANIMAR} dataKey="Gastos" fill={COLOR_GRAFICA.dos} radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
-                ))}
-              </div>
-              <p className="mt-2 text-xs text-slate-500"><span className="text-emerald-600">■</span> Facturado · <span className="text-amber-600">■</span> Gastos</p>
-            </Tarjeta></div>
-          )}
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
-            <Tarjeta titulo="Facturas">
-              {puede && (
-                <div className="mb-3 grid grid-cols-2 gap-2">
-                  <Input placeholder="N.º" value={fac.numero} onChange={(e) => setFac({ ...fac, numero: e.target.value })} />
-                  <Input type="date" value={fac.fecha} onChange={(e) => setFac({ ...fac, fecha: e.target.value })} />
-                  <Input placeholder="Concepto" value={fac.concepto} onChange={(e) => setFac({ ...fac, concepto: e.target.value })} />
-                  <Input type="number" min={1} placeholder="Valor" value={fac.valor} onChange={(e) => setFac({ ...fac, valor: e.target.value })} />
-                  <Boton className="col-span-2" disabled={!Number(fac.valor)} onClick={async () => { if (await enviar(`obras/${obraId}/facturas`, { ...fac, valor: Number(fac.valor) }, "POST", "Factura registrada")) setFac({ ...fac, numero: "", concepto: "", valor: "" }); }}>Agregar factura</Boton>
-                </div>
-              )}
-              {!d.facturas.length ? <Vacio>Sin facturas.</Vacio> : (
-                <Tabla cabeceras={["Fecha", "N.º / concepto", "Valor", ""]}>
-                  {d.facturas.map((x) => <tr key={x.id}><td className="px-3 py-2">{fechaCorta(x.fecha)}</td><td className="px-3 py-2">{x.numero} {x.concepto}</td><td className="px-3 py-2">{fmtCOP(x.valor)}</td>
-                    <td className="px-3 py-2 text-right">{puede && <Boton variante="fantasma" onClick={() => confirm("¿Eliminar la factura?") && enviar(`facturas/${x.id}`, undefined, "DELETE", "Eliminada")}>Quitar</Boton>}</td></tr>)}
-                </Tabla>
+                  <p className="mt-2 flex gap-4 text-sm text-suave">
+                    <span className="flex items-center gap-1.5"><span className="size-3 rounded-sm" style={{ background: COLOR_GRAFICA.uno }} aria-hidden /> Facturado</span>
+                    <span className="flex items-center gap-1.5"><span className="size-3 rounded-sm" style={{ background: COLOR_GRAFICA.dos }} aria-hidden /> Gastos</span>
+                  </p>
+                </>
               )}
             </Tarjeta>
-            <Tarjeta titulo="Gastos">
+
+            <Tarjeta titulo="Flujo y cartera">
+              <dl className="space-y-3 text-sm">
+                {[
+                  ["Obra ejecutada (bitácora)", fmtCOP(r.obra_ejecutada)],
+                  ["Ejecutada sin facturar", fmtCOP(r.por_facturar)],
+                  ["Retención en garantía acumulada", fmtCOP(r.rete_garantia_retenida)],
+                  ["Utilidad a la fecha (facturado − gastos)", fmtCOP(r.utilidad_actual)],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex justify-between gap-3 border-b border-borde pb-2 last:border-0"><dt className="text-suave">{k}</dt><dd className="num text-right font-semibold">{v}</dd></div>
+                ))}
+              </dl>
               {puede && (
-                <div className="mb-3 grid grid-cols-2 gap-2">
-                  <Select value={gas.categoria} onChange={(e) => setGas({ ...gas, categoria: e.target.value })}>{d.categorias.map((c) => <option key={c}>{c}</option>)}</Select>
-                  <Input type="date" value={gas.fecha} onChange={(e) => setGas({ ...gas, fecha: e.target.value })} />
-                  <Input placeholder="Descripción" value={gas.descripcion} onChange={(e) => setGas({ ...gas, descripcion: e.target.value })} />
-                  <Input type="number" min={1} placeholder="Valor" value={gas.valor} onChange={(e) => setGas({ ...gas, valor: e.target.value })} />
-                  <Boton className="col-span-2" disabled={!Number(gas.valor)} onClick={async () => { if (await enviar(`obras/${obraId}/gastos`, { ...gas, valor: Number(gas.valor) }, "POST", "Gasto registrado")) setGas({ ...gas, descripcion: "", valor: "" }); }}>Agregar gasto</Boton>
+                <div className="mt-4 space-y-2">
+                  <Campo etiqueta="Ingresos proyectados" ayuda={Number(ing) > 0 ? `${fmtCOP(Number(ing))}. Por defecto, el valor del contrato; ajústelo si hay otrosí.` : "Vacío = valor total del contrato"}>
+                    <Input type="number" min={0} inputMode="numeric" className="num" value={ing} onChange={(e) => setIng(e.target.value)} />
+                  </Campo>
+                  <Boton variante="secundario" className="w-full" onClick={() => enviar(`obras/${obraId}/ingresos`, { ingresos_proyectados: ing === "" ? null : Number(ing) }, "PUT")}>Guardar ingresos proyectados</Boton>
                 </div>
               )}
-              {!d.gastos.length ? <Vacio>Sin gastos.</Vacio> : (
-                <Tabla cabeceras={["Fecha", "Categoría", "Valor", ""]}>
-                  {d.gastos.map((x) => <tr key={x.id}><td className="px-3 py-2">{fechaCorta(x.fecha)}</td><td className="px-3 py-2">{x.categoria}<div className="text-xs text-slate-500">{x.descripcion}</div></td><td className="px-3 py-2">{fmtCOP(x.valor)}</td>
-                    <td className="px-3 py-2 text-right">{puede && <Boton variante="fantasma" onClick={() => confirm("¿Eliminar el gasto?") && enviar(`gastos/${x.id}`, undefined, "DELETE", "Eliminado")}>Quitar</Boton>}</td></tr>)}
-                </Tabla>
+              {porCat.length > 0 && (
+                <div className="mt-4 space-y-1.5">
+                  <p className="text-sm font-bold text-tinta">Gastos por categoría</p>
+                  {porCat.map(([c, v]) => <div key={c} className="flex justify-between text-sm"><span className="text-suave">{c}</span><span className="num font-semibold">{fmtMillones(v)}</span></div>)}
+                </div>
               )}
             </Tarjeta>
           </div>
+
+          <Tarjeta className="mt-5" titulo="Movimientos"
+            acciones={<Segmentado etiqueta="Tipo de movimiento" valor={vista} onChange={setVista} opciones={[{ valor: "gasto", texto: `Gastos (${d.gastos.length})` }, { valor: "factura", texto: `Facturas (${d.facturas.length})` }]} />}>
+            {movimientos.length === 0 ? (
+              <Vacio icono={vista === "gasto" ? <Wallet className="size-6" aria-hidden /> : <Receipt className="size-6" aria-hidden />} titulo={vista === "gasto" ? "Sin gastos registrados" : "Sin facturas registradas"}
+                texto={puede ? "Use el botón de arriba para registrar el primero." : undefined}
+                accion={puede ? <Boton icono={<Plus className="size-4" aria-hidden />} onClick={() => abrir(vista)}>{vista === "gasto" ? "Registrar gasto" : "Registrar factura"}</Boton> : undefined} />
+            ) : (
+              <ul key={vista} className="animar-fundido divide-y divide-borde">
+                {movimientos.map((x) => (
+                  <li key={x.id} className="flex items-center gap-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold">{x.t}</p>
+                      <p className="text-sm text-suave">{fechaCorta(x.fecha)} · {x.sub}</p>
+                    </div>
+                    <span className="num font-semibold">{fmtCOP(x.v)}</span>
+                    {puede && <BotonIcono peligro etiqueta={`Eliminar ${x.t}`} onClick={() => quitar(vista, x.id, x.t, x.v)}><Trash2 className="size-4" aria-hidden /></BotonIcono>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Tarjeta>
         </>
       )}
+
+      <Modal abierto={!!nuevo} onCerrar={() => setNuevo(undefined)} sucio={!!(form.valor || form.texto || form.numero)}
+        titulo={nuevo === "factura" ? "Registrar factura causada" : "Registrar gasto operacional"}
+        pie={<><Boton type="button" variante="secundario" onClick={() => setNuevo(undefined)}>Cancelar</Boton><Boton type="submit" form="form-movimiento">Guardar</Boton></>}>
+        <form id="form-movimiento" onSubmit={guardar} className="space-y-4" noValidate>
+          <div className="grid grid-cols-2 gap-3">
+            <Campo etiqueta="Fecha"><Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} /></Campo>
+            {nuevo === "factura" ? (
+              <Campo etiqueta="Número de factura"><Input value={form.numero} onChange={(e) => setForm({ ...form, numero: e.target.value })} /></Campo>
+            ) : (
+              <Campo etiqueta="Categoría"><Select value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })}>{(d?.categorias ?? []).map((c) => <option key={c}>{c}</option>)}</Select></Campo>
+            )}
+          </div>
+          <Campo etiqueta={nuevo === "factura" ? "Concepto" : "Descripción"} error={intento ? errTexto : undefined}>
+            <Input data-autofocus placeholder={nuevo === "factura" ? "Corte de obra No. 3" : "Pago cuadrilla, compra de insumos…"} value={form.texto} onChange={(e) => setForm({ ...form, texto: e.target.value })} />
+          </Campo>
+          <Campo etiqueta="Valor (COP)" error={intento ? errValor : undefined} ayuda={valor > 0 ? fmtCOP(valor) : undefined}>
+            <Input inputMode="numeric" className="num" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} />
+          </Campo>
+        </form>
+      </Modal>
     </>
   );
 }

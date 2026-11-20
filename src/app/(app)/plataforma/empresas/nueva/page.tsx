@@ -1,12 +1,13 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ArrowLeft, ArrowRight, Check, Copy, Rocket, Zap } from "lucide-react";
 import { api } from "@/lib/client";
-import { slugDesdeHost } from "@/lib/branding";
 import type { ModuloCatalogo, Plan } from "@/lib/types";
+import { CampoColor } from "@/components/CampoColor";
 import { ImagenInput } from "@/components/ImagenInput";
 import { VistaPreviaMarca } from "@/components/VistaPreviaMarca";
-import { Aviso, Boton, Campo, Input, Modal, Select, Tarjeta, Titulo, cx, useAviso } from "@/components/ui";
+import { Aviso, Boton, Campo, Chip, Input, Modal, Select, Tarjeta, Titulo, cx, useAviso } from "@/components/ui";
 
 const PASOS = ["Empresa y marca", "Administrador", "Plan y licencia", "Resumen"];
 const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
@@ -78,17 +79,28 @@ export default function NuevaEmpresa() {
   return (
     <>
       <Titulo sub="Cuatro pasos: datos y marca, administrador, plan y licencia.">Nueva empresa</Titulo>
-      <ol className="mb-5 flex flex-wrap gap-2 text-sm" aria-label="Pasos">
-        {PASOS.map((p, i) => (<li key={p} aria-current={i === paso ? "step" : undefined} className={cx("rounded-full px-3 py-1.5 font-medium", i === paso ? "bg-marca text-sobre-marca" : i < paso ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500")}>{i + 1}. {p}</li>))}
+      <ol className="mb-5 flex gap-2" aria-label="Pasos">
+        {PASOS.map((p, i) => {
+          const hecho = i < paso;
+          const actual = i === paso;
+          return (
+            <li key={p} aria-current={actual ? "step" : undefined}
+              className={cx("flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors duration-150", actual ? "flex-[3] bg-marca text-sobre-marca sm:flex-1" : "flex-none sm:flex-1", !actual && (hecho ? "bg-ok-50 text-ok" : "border border-borde bg-white text-suave"))}>
+              <span aria-hidden className={cx("grid size-6 shrink-0 place-items-center rounded-full text-xs", actual ? "bg-white/20" : hecho ? "bg-ok/15" : "bg-fondo")}>{hecho ? <Check className="size-3.5" /> : i + 1}</span>
+              <span className={cx("truncate", !actual && "sr-only sm:not-sr-only")}>{p}</span>
+              {hecho && <span className="sr-only">(completado)</span>}
+            </li>
+          );
+        })}
       </ol>
       {error && <div className="mb-4"><Aviso tono="error">{error}</Aviso></div>}
       {paso === 0 && (
-        <Tarjeta titulo="Alta rápida" className="mb-5" acciones={<span className="text-xs text-slate-500">Prueba de 14 días; marca y licencia se ajustan después</span>}>
+        <Tarjeta titulo={<span className="flex items-center gap-2"><Zap className="size-4 text-marca-texto" aria-hidden />Alta rápida</span>} className="mb-5" sub="Prueba de 14 días; la marca y la licencia se ajustan después. O siga con los 4 pasos de abajo.">
           <div className="grid gap-3 sm:grid-cols-[1fr_1fr_12rem_auto] sm:items-end">
             <Campo etiqueta="Nombre de la empresa"><Input value={rapida.nombre} onChange={(e) => setRapida({ ...rapida, nombre: e.target.value })} /></Campo>
             <Campo etiqueta="Correo del administrador"><Input type="email" value={rapida.correo} onChange={(e) => setRapida({ ...rapida, correo: e.target.value })} /></Campo>
             <Campo etiqueta="Plan"><Select value={rapida.plan} onChange={(e) => setRapida({ ...rapida, plan: e.target.value })}>{planes.map((p) => <option key={p.id} value={p.clave}>{p.nombre}</option>)}</Select></Campo>
-            <Boton onClick={altaRapida} disabled={creando || norm(rapida.nombre).length < 3 || !/^\S+@\S+\.\S+$/.test(rapida.correo)}>{creando ? "Creando…" : "Crear ahora"}</Boton>
+            <Boton onClick={altaRapida} cargando={creando} icono={creando ? undefined : <Rocket className="size-4" aria-hidden />} disabled={norm(rapida.nombre).length < 3 || !/^\S+@\S+\.\S+$/.test(rapida.correo)}>{creando ? "Creando…" : "Crear ahora"}</Boton>
           </div>
         </Tarjeta>
       )}
@@ -104,9 +116,9 @@ export default function NuevaEmpresa() {
               <Campo etiqueta="Moneda"><Input maxLength={3} value={f.moneda} onChange={(e) => set("moneda", e.target.value.toUpperCase())} /></Campo>
             </div>
             <Campo etiqueta="Nombre de la aplicación" ayuda="Se muestra en el encabezado. Vacío = nombre de la empresa."><Input value={f.nombre_app} onChange={(e) => set("nombre_app", e.target.value)} /></Campo>
-            <div className="grid grid-cols-2 gap-4">
-              <Campo etiqueta="Color principal"><Input type="color" className="!p-1" value={f.color_primario} onChange={(e) => set("color_primario", e.target.value)} /></Campo>
-              <Campo etiqueta="Color de acento"><Input type="color" className="!p-1" value={f.color_secundario} onChange={(e) => set("color_secundario", e.target.value)} /></Campo>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <CampoColor etiqueta="Color principal" ayuda="Barra lateral, botones y títulos" valor={f.color_primario} onChange={(v) => set("color_primario", v)} />
+              <CampoColor etiqueta="Color de acento" ayuda="Detalles, indicadores y gráficas" valor={f.color_secundario} onChange={(v) => set("color_secundario", v)} />
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
               <ImagenInput etiqueta="Logo (sobre color)" valor={f.logo_claro} onChange={(v) => set("logo_claro", v)} fondoOscuro />
@@ -131,9 +143,9 @@ export default function NuevaEmpresa() {
         <div className="grid gap-4 lg:grid-cols-2">
           <Tarjeta titulo="Plan" className="space-y-4">
             <Campo etiqueta="Plan base"><Select value={f.plan} onChange={(e) => set("plan", e.target.value)}>{planes.map((p) => <option key={p.id} value={p.clave}>{p.nombre}</option>)}</Select></Campo>
-            {plan && (<><p className="text-sm text-slate-600">{plan.descripcion}</p>
-              <div className="flex flex-wrap gap-1.5">{plan.modulos.map((m) => <span key={m} className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800">{nombreMod(m)}</span>)}</div>
-              <p className="text-xs text-slate-500">Podrá activar o desactivar módulos uno por uno después de crear la empresa.</p></>)}
+            {plan && (<><p className="text-sm text-suave">{plan.descripcion}</p>
+              <div className="flex flex-wrap gap-1.5">{plan.modulos.map((m) => <Chip key={m} tono="ok">{nombreMod(m)}</Chip>)}</div>
+              <p className="text-xs text-suave">Podrá activar o desactivar módulos uno por uno después de crear la empresa.</p></>)}
           </Tarjeta>
           <Tarjeta titulo="Licencia" className="space-y-4">
             <Campo etiqueta="Tipo"><Select value={f.tipo} onChange={(e) => set("tipo", e.target.value)}>
@@ -152,18 +164,20 @@ export default function NuevaEmpresa() {
       {paso === 3 && (
         <Tarjeta titulo="Revise y cree" className="max-w-2xl">
           <dl className="grid grid-cols-[9rem_1fr] gap-y-2 text-sm">
-            <dt className="text-slate-500">Empresa</dt><dd>{f.nombre} <span className="text-slate-500">({f.slug})</span></dd>
-            <dt className="text-slate-500">Acceso</dt><dd className="break-all">{base}</dd>
-            <dt className="text-slate-500">Administrador</dt><dd>{f.adminNombre} · {f.adminCorreo}</dd>
-            <dt className="text-slate-500">Plan</dt><dd>{plan?.nombre}</dd>
-            <dt className="text-slate-500">Licencia</dt><dd>{f.tipo === "periodo" ? `${f.meses} meses` : f.tipo === "hasta_fecha" ? `Hasta ${f.fin}` : f.tipo === "prueba" ? `Prueba de ${f.dias_prueba} días` : "Ilimitada"} · gracia {f.gracia_dias} días</dd>
+            <dt className="text-suave">Empresa</dt><dd>{f.nombre} <span className="text-suave">({f.slug})</span></dd>
+            <dt className="text-suave">Acceso</dt><dd className="break-all">{base}</dd>
+            <dt className="text-suave">Administrador</dt><dd>{f.adminNombre} · {f.adminCorreo}</dd>
+            <dt className="text-suave">Plan</dt><dd>{plan?.nombre}</dd>
+            <dt className="text-suave">Licencia</dt><dd>{f.tipo === "periodo" ? `${f.meses} meses` : f.tipo === "hasta_fecha" ? `Hasta ${f.fin}` : f.tipo === "prueba" ? `Prueba de ${f.dias_prueba} días` : "Ilimitada"} · gracia {f.gracia_dias} días</dd>
           </dl>
         </Tarjeta>
       )}
 
       <div className="mt-5 flex gap-2">
-        {paso > 0 && <Boton variante="secundario" onClick={() => { setError(""); setPaso(paso - 1); }}>Atrás</Boton>}
-        {paso < 3 ? <Boton onClick={siguiente}>Siguiente</Boton> : <Boton onClick={crear} disabled={creando}>{creando ? "Creando…" : "Crear empresa"}</Boton>}
+        {paso > 0 && <Boton variante="secundario" icono={<ArrowLeft className="size-4" aria-hidden />} onClick={() => { setError(""); setPaso(paso - 1); }}>Atrás</Boton>}
+        {paso < 3
+          ? <Boton onClick={siguiente}>Siguiente<ArrowRight className="size-4" aria-hidden /></Boton>
+          : <Boton onClick={crear} cargando={creando} icono={creando ? undefined : <Rocket className="size-4" aria-hidden />}>{creando ? "Creando…" : "Crear empresa"}</Boton>}
       </div>
 
       <Modal abierto={!!res} titulo="Empresa creada" onCerrar={() => {}}>
@@ -171,12 +185,12 @@ export default function NuevaEmpresa() {
           <div className="space-y-3">
             <Aviso tono="alerta">Entregue estas credenciales al administrador. La contraseña <strong>no se volverá a mostrar</strong>.</Aviso>
             <dl className="grid grid-cols-[7rem_1fr] gap-y-1 text-sm">
-              <dt className="text-slate-500">Acceso</dt><dd className="break-all">{typeof window !== "undefined" ? (process.env.NEXT_PUBLIC_BASE_DOMAIN ? `${res.empresa.slug}.${process.env.NEXT_PUBLIC_BASE_DOMAIN}` : `${window.location.origin}/${res.empresa.slug}`) : ""}</dd>
-              <dt className="text-slate-500">Código</dt><dd>{res.empresa.slug}</dd>
-              <dt className="text-slate-500">Correo</dt><dd>{res.admin.correo}</dd>
+              <dt className="text-suave">Acceso</dt><dd className="break-all">{typeof window !== "undefined" ? (process.env.NEXT_PUBLIC_BASE_DOMAIN ? `${res.empresa.slug}.${process.env.NEXT_PUBLIC_BASE_DOMAIN}` : `${window.location.origin}/${res.empresa.slug}`) : ""}</dd>
+              <dt className="text-suave">Código</dt><dd>{res.empresa.slug}</dd>
+              <dt className="text-suave">Correo</dt><dd>{res.admin.correo}</dd>
             </dl>
-            <div className="flex items-center gap-2"><code className="flex-1 rounded-lg bg-slate-100 px-3 py-3 text-base font-semibold">{res.admin.password_temporal}</code>
-              <Boton variante="secundario" onClick={() => { void navigator.clipboard?.writeText(res.admin.password_temporal); aviso("Copiada"); }}>Copiar</Boton></div>
+            <div className="flex items-center gap-2"><code className="num min-w-0 flex-1 break-all rounded-lg bg-fondo px-3 py-3 text-base font-semibold text-tinta">{res.admin.password_temporal}</code>
+              <Boton variante="secundario" icono={<Copy className="size-4" aria-hidden />} onClick={() => { void navigator.clipboard?.writeText(res.admin.password_temporal); aviso("Copiada"); }}>Copiar</Boton></div>
             <div className="flex justify-end"><Link href={`/plataforma/empresas/${res.empresa.id}`}><Boton>Ir a la empresa</Boton></Link></div>
           </div>
         )}
