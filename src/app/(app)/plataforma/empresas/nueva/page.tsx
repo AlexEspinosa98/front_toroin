@@ -46,6 +46,19 @@ export default function NuevaEmpresa() {
     }
     return "";
   }
+  const [rapida, setRapida] = useState({ nombre: "", correo: "", plan: "profesional" });
+  async function altaRapida() {
+    setCreando(true); setError("");
+    try {
+      const nombre = rapida.nombre.trim();
+      const r = await api<NonNullable<typeof res>>("platform/empresas", { method: "POST", body: {
+        slug: norm(nombre), nombre, admin: { nombre: "Administrador", correo: rapida.correo.trim() },
+        licencia: { plan: rapida.plan, tipo: "prueba", dias_prueba: 14, gracia_dias: 7 },
+      } });
+      setRes(r);
+    } catch (x) { setError(x instanceof Error ? x.message : "No se pudo crear la empresa"); }
+    finally { setCreando(false); }
+  }
   const siguiente = () => { const e = validar(); setError(e); if (!e) setPaso(paso + 1); };
 
   async function crear() {
@@ -69,6 +82,16 @@ export default function NuevaEmpresa() {
         {PASOS.map((p, i) => (<li key={p} aria-current={i === paso ? "step" : undefined} className={cx("rounded-full px-3 py-1.5 font-medium", i === paso ? "bg-marca text-sobre-marca" : i < paso ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500")}>{i + 1}. {p}</li>))}
       </ol>
       {error && <div className="mb-4"><Aviso tono="error">{error}</Aviso></div>}
+      {paso === 0 && (
+        <Tarjeta titulo="Alta rápida" className="mb-5" acciones={<span className="text-xs text-slate-500">Prueba de 14 días; marca y licencia se ajustan después</span>}>
+          <div className="grid gap-3 sm:grid-cols-[1fr_1fr_12rem_auto] sm:items-end">
+            <Campo etiqueta="Nombre de la empresa"><Input value={rapida.nombre} onChange={(e) => setRapida({ ...rapida, nombre: e.target.value })} /></Campo>
+            <Campo etiqueta="Correo del administrador"><Input type="email" value={rapida.correo} onChange={(e) => setRapida({ ...rapida, correo: e.target.value })} /></Campo>
+            <Campo etiqueta="Plan"><Select value={rapida.plan} onChange={(e) => setRapida({ ...rapida, plan: e.target.value })}>{planes.map((p) => <option key={p.id} value={p.clave}>{p.nombre}</option>)}</Select></Campo>
+            <Boton onClick={altaRapida} disabled={creando || norm(rapida.nombre).length < 3 || !/^\S+@\S+\.\S+$/.test(rapida.correo)}>{creando ? "Creando…" : "Crear ahora"}</Boton>
+          </div>
+        </Tarjeta>
+      )}
 
       {paso === 0 && (
         <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
@@ -148,7 +171,7 @@ export default function NuevaEmpresa() {
           <div className="space-y-3">
             <Aviso tono="alerta">Entregue estas credenciales al administrador. La contraseña <strong>no se volverá a mostrar</strong>.</Aviso>
             <dl className="grid grid-cols-[7rem_1fr] gap-y-1 text-sm">
-              <dt className="text-slate-500">Acceso</dt><dd className="break-all">{base}</dd>
+              <dt className="text-slate-500">Acceso</dt><dd className="break-all">{typeof window !== "undefined" ? (process.env.NEXT_PUBLIC_BASE_DOMAIN ? `${res.empresa.slug}.${process.env.NEXT_PUBLIC_BASE_DOMAIN}` : `${window.location.origin}/${res.empresa.slug}`) : ""}</dd>
               <dt className="text-slate-500">Código</dt><dd>{res.empresa.slug}</dd>
               <dt className="text-slate-500">Correo</dt><dd>{res.admin.correo}</dd>
             </dl>

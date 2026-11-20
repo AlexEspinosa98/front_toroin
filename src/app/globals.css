@@ -27,3 +27,17 @@ body {
 /* Foco visible y áreas táctiles cómodas para uso en obra */
 :focus-visible { outline: 3px solid var(--secundario); outline-offset: 2px; }
 button, select, input, textarea { font: inherit; }
+
+/* Móvil: evita el zoom de iOS al enfocar campos, respeta las zonas seguras y deja espacio para la barra inferior */
+@media (max-width: 1023px) {
+  input, select, textarea { font-size: 16px !important; }
+  main { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+}
+html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+body { overscroll-behavior-y: none; }
+.pb-seguro { padding-bottom: env(safe-area-inset-bottom); }
+.pt-seguro { padding-top: env(safe-area-inset-top); }
+@media print {
+  aside, header, nav, .no-imprimir { display: none !important; }
+  body { background: #fff; }
+}
