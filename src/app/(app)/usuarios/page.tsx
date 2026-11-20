@@ -3,9 +3,10 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/client";
 import { useSession } from "@/lib/session";
 import { fechaHora, ROL_TEXTO } from "@/lib/format";
+import { PermisosUsuario, type UsuarioPerm } from "@/components/PermisosUsuario";
 import { Aviso, Boton, Campo, Input, Insignia, Modal, Select, Tabla, Titulo, useAviso } from "@/components/ui";
 
-type U = { id: string; nombre: string; correo: string; rol: string; activo: boolean; ultimo_acceso: string | null };
+type U = UsuarioPerm & { correo: string; activo: boolean; ultimo_acceso: string | null };
 const ROLES = ["admin", "gerencia", "rrhh", "sst", "residente"];
 
 export default function Usuarios() {
@@ -14,6 +15,7 @@ export default function Usuarios() {
   const [lista, setLista] = useState<U[] | null>(null);
   const [error, setError] = useState("");
   const [nuevo, setNuevo] = useState<{ nombre: string; correo: string; rol: string } | null>(null);
+  const [permisos, setPermisos] = useState<U | null>(null);
   const [clave, setClave] = useState<{ correo: string; password: string } | null>(null);
   const puede = !me.solo_lectura && me.licencia?.escritura;
 
@@ -39,25 +41,28 @@ export default function Usuarios() {
 
   return (
     <>
-      <Titulo sub="Cada rol ve solo los módulos que le corresponden." acciones={puede && <Boton onClick={() => setNuevo({ nombre: "", correo: "", rol: "residente" })}>Nuevo usuario</Boton>}>Usuarios</Titulo>
+      <Titulo sub="Cada rol trae sus módulos; usted puede darle o quitarle módulos y alertas a cada persona." acciones={puede && <Boton onClick={() => setNuevo({ nombre: "", correo: "", rol: "residente" })}>Nuevo usuario</Boton>}>Usuarios</Titulo>
       {error && <Aviso tono="error">{error}</Aviso>}
       {lista && (
-        <Tabla cabeceras={["Nombre", "Correo", "Rol", "Último acceso", "Estado", ""]}>
+        <Tabla cabeceras={["Nombre", "Rol", "Módulos", "Último acceso", "Estado", ""]}>
           {lista.map((u) => (
             <tr key={u.id}>
-              <td className="px-3 py-3 font-medium">{u.nombre}</td><td className="px-3 py-3">{u.correo}</td>
+              <td className="px-3 py-3"><div className="font-medium">{u.nombre}</div><div className="text-xs text-slate-500">{u.correo}</div></td>
               <td className="px-3 py-3">
                 {puede && u.id !== me.id ? <Select aria-label={`Rol de ${u.nombre}`} className="!min-h-9" value={u.rol} onChange={(e) => cambiar(u, { rol: e.target.value })}>{ROLES.map((r) => <option key={r} value={r}>{ROL_TEXTO[r]}</option>)}</Select> : ROL_TEXTO[u.rol]}
               </td>
+              <td className="px-3 py-3 text-xs">{u.rol === "admin" ? "Todos" : u.modulos_efectivos.length ? u.modulos_efectivos.join(", ") : "Ninguno"}{u.modulos && <Insignia tono="azul">Personalizado</Insignia>}</td>
               <td className="px-3 py-3">{fechaHora(u.ultimo_acceso)}</td>
               <td className="px-3 py-3"><Insignia tono={u.activo ? "verde" : "gris"}>{u.activo ? "Activo" : "Inactivo"}</Insignia></td>
               <td className="px-3 py-3 text-right whitespace-nowrap">{puede && u.id !== me.id && <>
+                {u.rol !== "admin" && <Boton variante="fantasma" className="!min-h-9" onClick={() => setPermisos(u)}>Permisos</Boton>}
                 <Boton variante="fantasma" className="!min-h-9" onClick={() => reiniciar(u)}>Reiniciar clave</Boton>
                 <Boton variante="fantasma" className="!min-h-9" onClick={() => cambiar(u, { activo: !u.activo })}>{u.activo ? "Desactivar" : "Activar"}</Boton></>}</td>
             </tr>
           ))}
         </Tabla>
       )}
+      <PermisosUsuario usuario={permisos} onCerrar={() => setPermisos(null)} onGuardado={() => void cargar()} />
       <Modal abierto={!!nuevo} titulo="Nuevo usuario" onCerrar={() => setNuevo(null)}>
         <form onSubmit={crear} className="space-y-4">
           <Campo etiqueta="Nombre"><Input required minLength={2} value={nuevo?.nombre ?? ""} onChange={(e) => setNuevo({ ...nuevo!, nombre: e.target.value })} /></Campo>
