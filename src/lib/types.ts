@@ -32,3 +32,11 @@ export type DetalleEmpresa = {
   usuarios: { id: string; nombre: string; correo: string; rol: string; activo: boolean; ultimo_acceso: string | null }[];
 };
 export type Auditoria = { id: string; fecha: string; usuario: string; accion: string; entidad: string; entidad_id: string; detalle: Record<string, unknown>; empresa_id: string | null; ip: string };
+
+// ---- Contrato y bitácora ----
+export type Semaforo = "al-dia" | "atencion" | "atrasada" | "sin-contrato";
+export type ResumenObraT = { semaforo: Semaforo; valor_contrato: number; valor_ejecutado: number; avance_fisico: number; avance_tiempo: number; dias_restantes: number; indice: number };
+export type ActividadT = { id: string; item: string; grupo: number; capitulo: string; nombre: string; ubicacion: string; um: string; cantidad: number; valor_unitario: number; valor_total: number; tarifa: number | null; advertencias: string[]; ejecutado: number };
+export type ContratoT = { numero: string; contratante: string; nit_contratante: string; contratista: string; proyecto: string; descripcion: string; tipo: string; fecha_inicio: string; fecha_fin: string; valor_total: number; valor_antes_aiu: number; aiu: number; pct_rete_garantia: number; rete_garantia: number; valor_neto: number; forma_pago: string; pagos: { fecha: string; valor: number; concepto: string }[]; advertencias: string[]; archivo: string };
+export type DatosObra = { obra: { id: string; nombre: string; ciudad: string; ingresos_proyectados: number | null }; contrato: ContratoT | null; actividades: ActividadT[]; resumen: ResumenObraT };
+export type RegistroT = { id: string; obra_id: string; fecha: string; actividad_id: string; cantidad: number; personas: number; trabajadores: string[]; por_trabajador: Record<string, number>; horas_atraso: number; motivo_atraso: string | null; acciones: string; observaciones: string; fotos: string[]; creado: string };

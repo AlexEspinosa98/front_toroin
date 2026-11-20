@@ -1,7 +1,7 @@
 import { API_URL, esPeticionLegitima, json, tokenActual } from "@/lib/server";
 
 // Solo se reenvían estas rutas del backend. Login/logout tienen su propio manejador (cookie).
-const PERMITIDAS = ["platform/", "empresa/", "obras", "personal", "asignaciones", "asistencia", "auth/me", "auth/cambiar-password", "public/empresas/"];
+const PERMITIDAS = ["platform/", "empresa/", "obras", "personal", "asignaciones", "asistencia", "contratos", "bitacora", "tareas", "fotos", "auth/me", "auth/cambiar-password", "public/empresas/"];
 
 async function reenviar(req: Request, ctx: { params: Promise<{ path: string[] }> }) {
   const { path } = await ctx.params;

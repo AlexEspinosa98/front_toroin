@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/client";
 import { useSession } from "@/lib/session";
+import Link from "next/link";
 import { Aviso, Boton, Campo, Input, Insignia, Modal, Select, Tabla, Titulo, Vacio, useAviso } from "@/components/ui";
 
 type Obra = { id: string; nombre: string; ciudad: string; estado: string };
@@ -41,7 +42,7 @@ export default function Obras() {
             <tr key={o.id}>
               <td className="px-3 py-3 font-medium">{o.nombre}</td><td className="px-3 py-3">{o.ciudad || "—"}</td>
               <td className="px-3 py-3"><Insignia tono={o.estado === "activa" ? "verde" : o.estado === "pausada" ? "ambar" : "gris"}>{o.estado}</Insignia></td>
-              <td className="px-3 py-3 text-right">{puedeEscribir && <><Boton variante="fantasma" className="!min-h-9" onClick={() => setEdit(o)}>Editar</Boton><Boton variante="fantasma" className="!min-h-9 !text-red-700" onClick={() => borrar(o)}>Eliminar</Boton></>}</td>
+              <td className="px-3 py-3 text-right whitespace-nowrap">{tieneModulo("contrato") && <Link href={`/obras/${o.id}`} className="mr-2 inline-flex min-h-9 items-center rounded-lg px-3 text-sm font-semibold text-marca hover:bg-slate-100">Tablero</Link>}{puedeEscribir && <><Boton variante="fantasma" className="!min-h-9" onClick={() => setEdit(o)}>Editar</Boton><Boton variante="fantasma" className="!min-h-9 !text-red-700" onClick={() => borrar(o)}>Eliminar</Boton></>}</td>
             </tr>
           ))}
         </Tabla>
