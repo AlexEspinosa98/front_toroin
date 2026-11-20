@@ -13,7 +13,7 @@ const NOMBRES: Record<string, string> = {
   obras: "Obras", contrato: "Contrato y tablero", personal: "Personal", asistencia: "Asistencia", bitacora: "Bitácora y avance",
   control_personal: "Control de personal", pagos: "Pagos al personal", finanzas: "Finanzas", epp: "EPP / SST",
 };
-const RUTA_PROPIA = new Set(["obras", "personal"]); // módulos ya portados; el resto usa /m/[clave]
+const RUTA_PROPIA = new Set(["obras", "personal", "asistencia"]); // módulos ya portados; el resto usa /m/[clave]
 
 function itemsEmpresa(modulos: string[], rol: string): Item[] {
   const it: Item[] = [{ href: "/", texto: "Inicio" }];
