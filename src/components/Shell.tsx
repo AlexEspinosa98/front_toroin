@@ -13,14 +13,15 @@ const NOMBRES: Record<string, string> = {
   obras: "Obras", contrato: "Contrato y tablero", personal: "Personal", asistencia: "Asistencia", bitacora: "Bitácora y avance",
   control_personal: "Control de personal", pagos: "Pagos al personal", finanzas: "Finanzas", epp: "EPP / SST",
 };
-const RUTA_PROPIA = new Set(["obras", "personal", "asistencia", "contrato", "bitacora"]); // módulos ya portados; el resto usa /m/[clave]
+const RUTA_PROPIA = new Set(["obras", "personal", "asistencia", "contrato", "bitacora", "epp", "control_personal", "pagos", "finanzas"]); // módulos ya portados; el resto usa /m/[clave]
 
 function itemsEmpresa(modulos: string[], rol: string): Item[] {
   const it: Item[] = [{ href: "/", texto: "Inicio" }];
   for (const m of modulos) {
     if (m === "usuarios" || !NOMBRES[m]) continue;
-    it.push({ href: RUTA_PROPIA.has(m) ? `/${m}` : `/m/${m}`, texto: NOMBRES[m] });
+    it.push({ href: RUTA_PROPIA.has(m) ? `/${m.replace("_", "-")}` : `/m/${m}`, texto: NOMBRES[m] });
   }
+  if (modulos.includes("control_personal") && (rol === "admin" || rol === "gerencia" || rol === "super_admin")) it.push({ href: "/ajustes", texto: "Ajustes" });
   if (modulos.includes("usuarios")) it.push({ href: "/usuarios", texto: "Usuarios" });
   if (rol === "admin" || rol === "super_admin") it.push({ href: "/marca", texto: "Marca" });
   it.push({ href: "/licencia", texto: "Mi licencia" });
