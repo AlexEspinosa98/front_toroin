@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { api, ApiError, post } from "./client";
-import { aplicarMarca } from "./branding";
+import { aplicarMarca, rutaAcceso } from "./branding";
 import type { Me } from "./types";
 
 type Ctx = { me: Me; recargar: () => Promise<void>; salir: () => Promise<void>; tieneModulo: (m: string) => boolean };
@@ -33,7 +33,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         l.href = ic;
       }
     } catch (e) {
-      if (e instanceof ApiError && e.status === 401) router.replace("/login");
+      if (e instanceof ApiError && e.status === 401) router.replace(rutaAcceso());
       else if (e instanceof ApiError && e.status === 403) { setError(e.message); }
       else setError("No se pudo conectar con el servidor");
     }
@@ -48,7 +48,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const salir = useCallback(async () => {
     await post("/api/auth/logout").catch(() => {});
-    router.replace("/login");
+    router.replace(rutaAcceso());
   }, [router]);
 
   if (error && !me)

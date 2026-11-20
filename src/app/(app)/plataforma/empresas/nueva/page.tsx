@@ -34,7 +34,7 @@ export default function NuevaEmpresa() {
 
   const plan = planes.find((p) => p.clave === f.plan);
   const nombreMod = (k: string) => cat.find((m) => m.clave === k)?.nombre ?? k;
-  const base = typeof window !== "undefined" ? (process.env.NEXT_PUBLIC_BASE_DOMAIN ? `${f.slug}.${process.env.NEXT_PUBLIC_BASE_DOMAIN}` : `${window.location.origin}/login?empresa=${f.slug}`) : "";
+  const base = typeof window !== "undefined" ? (process.env.NEXT_PUBLIC_BASE_DOMAIN ? `${f.slug}.${process.env.NEXT_PUBLIC_BASE_DOMAIN}` : `${window.location.origin}/${f.slug}`) : "";
 
   function validar(): string {
     if (paso === 0) { if (f.nombre.trim().length < 2) return "Escriba el nombre de la empresa"; if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(f.slug)) return "El código debe tener 3-63 caracteres: letras minúsculas, números y guiones"; }

@@ -38,3 +38,11 @@ export function slugDesdeHost(host: string): string | null {
   }
   return null;
 }
+
+/** Ruta de acceso a la que volver: el enlace de la empresa recordada, o /login (plataforma). */
+export function rutaAcceso(): string {
+  try {
+    const e = (localStorage.getItem("empresa") ?? "").trim().toLowerCase();
+    return /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(e) ? `/${e}` : "/login";
+  } catch { return "/login"; }
+}
