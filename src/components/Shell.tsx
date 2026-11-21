@@ -12,8 +12,9 @@ type Item = { href: string; texto: string };
 const NOMBRES: Record<string, string> = {
   obras: "Obras", contrato: "Contrato y tablero", personal: "Personal", asistencia: "Asistencia", bitacora: "Bitácora y avance",
   control_personal: "Control de personal", pagos: "Pagos al personal", finanzas: "Finanzas", epp: "EPP / SST",
+  inventario: "Inventario y bodega", compras: "Compras", presupuesto: "Presupuesto vs. real", cronograma: "Cronograma",
 };
-const RUTA_PROPIA = new Set(["obras", "personal", "asistencia", "contrato", "bitacora", "epp", "control_personal", "pagos", "finanzas"]); // módulos ya portados; el resto usa /m/[clave]
+const RUTA_PROPIA = new Set(["obras", "personal", "asistencia", "contrato", "bitacora", "epp", "control_personal", "pagos", "finanzas", "inventario", "compras", "presupuesto", "cronograma"]); // módulos ya portados; el resto usa /m/[clave]
 
 function itemsEmpresa(modulos: string[], rol: string): Item[] {
   const it: Item[] = [{ href: "/", texto: "Inicio" }, { href: "/alertas", texto: "Alertas" }];
