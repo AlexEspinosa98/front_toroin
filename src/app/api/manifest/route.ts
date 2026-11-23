@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 // Manifiesto de la app instalable: toma el nombre, el color y el ícono de la empresa si hay sesión.
 export async function GET() {
-  let nombre = "TOROIN", color = "#19185A", icono = false;
+  let nombre = "Gestión de obra", color = "#19185A", icono = false;
   const token = await tokenActual();
   if (token) {
     try {

@@ -1,42 +1,259 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------
+   Sistema visual TOROIN (portado del prototipo) en versión marca blanca.
+   Los únicos valores que cambian por empresa son --primario y --secundario
+   (los fija lib/branding.ts). Todo lo demás —tintes, hover, fondos suaves,
+   texto de títulos— se DERIVA de ellos con color-mix, así que cualquier
+   color de empresa produce una interfaz coherente.
+   El color secundario se usa como acento/relleno, nunca como texto sobre blanco.
+   ------------------------------------------------------------------ */
 :root {
   --primario: #19185a;
   --secundario: #f59e0b;
   --sobre-primario: #ffffff;
   --sobre-secundario: #111827;
-  --fondo: #f6f7fb;
-  --texto: #0f172a;
+
+  --fondo: #f4f6fb;
+  --tarjeta: #ffffff;
+  --texto: #171a2e;
+  --suave: #525a70;
+  --placeholder: #646c80;
+  --borde: #e1e5ee; /* divisores decorativos */
+  --borde-campo: #858ca3; /* contorno de campos: ≥3:1 (WCAG 1.4.11), visible al sol */
+
+  /* Derivados del color de la empresa */
+  --tinta: color-mix(in oklab, var(--primario) 35%, #0b1020); /* títulos: siempre oscuros y legibles */
+  --marca-700: color-mix(in oklab, var(--primario) 82%, black);
+  --marca-100: color-mix(in oklab, var(--primario) 16%, white);
+  --marca-50: color-mix(in oklab, var(--primario) 7%, white);
+  /* Texto/íconos de énfasis (enlaces, pestaña activa) sobre fondos claros. Respaldo para navegadores sin color relativo: */
+  --marca-texto: color-mix(in oklab, var(--primario) 40%, #0b1020);
+  --acento-50: color-mix(in oklab, var(--secundario) 16%, white);
+  --acento-texto: color-mix(in oklab, var(--secundario) 40%, #0b1020); /* texto sobre acento-50 */
+  /* Series de gráficas y barras (marcas no textuales ≥ 3:1 sobre blanco con cualquier color de empresa) */
+  --grafica-1: var(--marca-texto);
+  --grafica-2: color-mix(in oklab, var(--secundario) 65%, #0b1020);
+
+  /* Semánticos fijos (contraste verificado en el prototipo) */
+  --ok: #137a3a;
+  --ok-50: #e8f6ee;
+  --alerta: #a45309;
+  --alerta-50: #fdf3e3;
+  --error: #c62828;
+  --error-50: #fdecec;
+
+  --ease-entrada: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-salida: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* Conserva el color de marca si ya es oscuro y solo limita su luminosidad (OKLCH ≤ 0,45) si es claro:
+   así el texto de énfasis cumple ≥ 4,5:1 sobre blanco y sobre el tinte de marca con cualquier color de empresa
+   (verificado con amarillo, ámbar, blanco, turquesa, verde, violeta y rojo). */
+@supports (color: oklch(from red l c h)) {
+  :root {
+    --marca-texto: oklch(from var(--primario) min(l, 0.45) c h);
+    --grafica-2: oklch(from var(--secundario) min(l, 0.6) c h);
+  }
 }
 
 @theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
   --color-marca: var(--primario);
   --color-marca2: var(--secundario);
   --color-sobre-marca: var(--sobre-primario);
   --color-sobre-marca2: var(--sobre-secundario);
+  --color-marca-700: var(--marca-700);
+  --color-marca-100: var(--marca-100);
+  --color-marca-50: var(--marca-50);
+  --color-marca-texto: var(--marca-texto);
+  --color-acento-50: var(--acento-50);
+  --color-acento-texto: var(--acento-texto);
+  --color-tinta: var(--tinta);
+
   --color-fondo: var(--fondo);
-  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --color-tarjeta: var(--tarjeta);
+  --color-texto: var(--texto);
+  --color-suave: var(--suave);
+  --color-placeholder: var(--placeholder);
+  --color-borde: var(--borde);
+  --color-borde-campo: var(--borde-campo);
+
+  --color-ok: var(--ok);
+  --color-ok-50: var(--ok-50);
+  --color-alerta: var(--alerta);
+  --color-alerta-50: var(--alerta-50);
+  --color-error: var(--error);
+  --color-error-50: var(--error-50);
 }
 
-body {
-  background: var(--fondo);
-  color: var(--texto);
-  font-family: var(--font-inter), system-ui, sans-serif;
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
+    /* El foco nunca queda oculto bajo la barra superior ni bajo la barra inferior / acciones fijas */
+    scroll-padding-top: 4.5rem;
+    scroll-padding-bottom: calc(9rem + env(safe-area-inset-bottom));
+  }
+  @media (min-width: 1024px) {
+    html {
+      scroll-padding-top: 5rem;
+      scroll-padding-bottom: 6rem;
+    }
+  }
+  /* Con una ventana abierta, el fondo no se desplaza */
+  html:has(dialog[open]) {
+    overflow: hidden;
+  }
+  body {
+    @apply bg-fondo text-texto font-sans antialiased;
+    font-size: 16px;
+    line-height: 1.5;
+    overscroll-behavior-y: none;
+  }
+  button, select, input, textarea {
+    font: inherit;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    outline: 3px solid var(--marca-texto);
+    outline-offset: 2px;
+  }
+  /* Sobre fondos de marca (barra lateral, cabecera móvil) el anillo usa el acento */
+  .sobre-oscuro :focus-visible {
+    outline-color: var(--secundario);
+  }
+  button, [role="button"], select, summary {
+    cursor: pointer;
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  /* Móvil: evita el zoom de iOS al enfocar campos */
+  @media (max-width: 1023px) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+  }
 }
 
-/* Foco visible y áreas táctiles cómodas para uso en obra */
-:focus-visible { outline: 3px solid var(--secundario); outline-offset: 2px; }
-button, select, input, textarea { font: inherit; }
-
-/* Móvil: evita el zoom de iOS al enfocar campos, respeta las zonas seguras y deja espacio para la barra inferior */
-@media (max-width: 1023px) {
-  input, select, textarea { font-size: 16px !important; }
-  main { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+@layer components {
+  .input {
+    @apply w-full min-h-11 rounded-lg border border-borde-campo bg-white px-3 py-2 text-base text-texto
+      placeholder:text-placeholder transition-colors duration-150
+      focus:border-marca-texto focus:outline-none focus:ring-2 focus:ring-marca-texto/25
+      disabled:bg-fondo disabled:text-suave;
+  }
+  .input[aria-invalid="true"] {
+    @apply border-error ring-2 ring-error/20;
+  }
+  textarea.input {
+    @apply min-h-24;
+  }
 }
-html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
-body { overscroll-behavior-y: none; }
+
+/* ---------------- Movimiento ---------------- */
+@keyframes aparecer {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fundido {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes subir {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: none; }
+}
+/* Contenido que se despliega (filas, paneles) */
+.animar-entrada { animation: aparecer 180ms var(--ease-entrada); }
+/* Cambio de pantalla o de pestaña: solo opacidad (no altera el posicionamiento fijo/sticky) */
+.animar-fundido { animation: fundido 160ms var(--ease-entrada); }
+.animar-aviso { animation: subir 220ms var(--ease-entrada); }
+details[open] > :not(summary) { animation: aparecer 180ms var(--ease-entrada); }
+
+/* Ventanas: hoja que sube desde abajo en celular; escala + fundido en escritorio.
+   Entrada 240 ms desacelerando, salida 160 ms acelerando. */
+dialog.ventana {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 240ms var(--ease-entrada),
+    transform 240ms var(--ease-entrada),
+    overlay 240ms allow-discrete,
+    display 240ms allow-discrete;
+}
+dialog.ventana:not([open]) {
+  opacity: 0;
+  transform: translateY(32px);
+  transition-duration: 160ms;
+  transition-timing-function: var(--ease-salida);
+}
+@starting-style {
+  dialog.ventana[open] { opacity: 0; transform: translateY(32px); }
+}
+@media (min-width: 640px) {
+  dialog.ventana:not([open]) { transform: scale(0.97); }
+  @starting-style {
+    dialog.ventana[open] { transform: scale(0.97); }
+  }
+}
+dialog.ventana::backdrop {
+  background: rgb(10 12 40 / 0.5);
+  opacity: 1;
+  transition:
+    opacity 240ms var(--ease-entrada),
+    overlay 240ms allow-discrete,
+    display 240ms allow-discrete;
+}
+dialog.ventana:not([open])::backdrop { opacity: 0; transition-duration: 160ms; }
+@starting-style {
+  dialog.ventana[open]::backdrop { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after, dialog.ventana, dialog.ventana::backdrop {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------------- Barras de desplazamiento ---------------- */
+/* Menú lateral oscuro: delgada, translúcida y visible solo al pasar el mouse o desplazarse */
+.desplazable-oscuro {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: stable;
+}
+.desplazable-oscuro:hover, .desplazable-oscuro:focus-within {
+  scrollbar-color: color-mix(in oklab, var(--sobre-primario) 28%, transparent) transparent;
+}
+.desplazable-oscuro::-webkit-scrollbar { width: 6px; }
+.desplazable-oscuro::-webkit-scrollbar-track { background: transparent; }
+.desplazable-oscuro::-webkit-scrollbar-thumb { background: transparent; border-radius: 999px; }
+.desplazable-oscuro:hover::-webkit-scrollbar-thumb { background: color-mix(in oklab, var(--sobre-primario) 28%, transparent); }
+/* Resto de la app: delgada y discreta */
+html { scrollbar-width: thin; scrollbar-color: #c3c8d4 transparent; }
+
+/* Avisos arriba: nunca tapan los botones de guardar ni la navegación inferior */
+.avisos { top: calc(env(safe-area-inset-top) + 0.75rem); }
+
+/* ---------------- Zona segura (iPhone con barra de gestos) ---------------- */
 .pb-seguro { padding-bottom: env(safe-area-inset-bottom); }
 .pt-seguro { padding-top: env(safe-area-inset-top); }
+/* Acciones fijas por encima de la navegación inferior */
+.sobre-nav { bottom: calc(4.25rem + env(safe-area-inset-bottom)); }
+/* Espacio al final del contenido para que la navegación inferior no lo tape */
+.pb-nav { padding-bottom: calc(7.5rem + env(safe-area-inset-bottom)); }
+@media (min-width: 1024px) {
+  .sobre-nav { bottom: 1rem; }
+  .pb-nav { padding-bottom: 2.5rem; }
+}
+
 @media print {
   aside, header, nav, .no-imprimir { display: none !important; }
   body { background: #fff; }

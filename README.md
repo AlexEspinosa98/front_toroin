@@ -18,7 +18,7 @@ Backend: [backend_toroin](https://github.com/AlexEspinosa98/backend_toroin) (Fas
 |---|---|
 | Acceso | `/login` (con marca de la empresa), `/cambiar-password` |
 | Super admin | `/plataforma` (panel), `/plataforma/empresas`, `/plataforma/empresas/nueva` (asistente de 4 pasos), `/plataforma/empresas/[id]` (General · Módulos · Licencia · Marca · Usuarios · Auditoría, «Ver como la empresa»), `/plataforma/planes`, `/plataforma/parametros`, `/plataforma/auditoria` |
-| Empresa | `/` (inicio), `/obras`, `/personal`, `/usuarios`, `/marca`, `/licencia`, `/m/[modulo]` (módulos licenciados aún en migración) |
+| Empresa | `/` (inicio), `/alertas`, `/obras`, `/obras/[id]` (tablero), `/obras/[id]/contrato`, `/contrato`, `/personal`, `/asistencia`, `/bitacora`, `/control-personal`, `/pagos`, `/finanzas`, `/epp`, `/ajustes`, `/usuarios`, `/actividad`, `/marca`, `/licencia` |
 
 ## Ejecutar en local
 
@@ -42,5 +42,15 @@ Si defines `NEXT_PUBLIC_BASE_DOMAIN=tudominio.com`, `torres.tudominio.com` fija 
 2. Variables de entorno: `API_URL` (URL del backend desplegado, sin barra final) y, opcionalmente, `NEXT_PUBLIC_BASE_DOMAIN`.
 3. En el backend, agrega la URL del front en `CORS_ORIGINS` (el proxy hace las llamadas desde el servidor, así que normalmente no hace falta).
 
+## Diseño
+
+Sistema visual portado del prototipo (`toroin-app`) y adaptado a marca blanca:
+
+- **Solo dos valores cambian por empresa:** `--primario` y `--secundario` (los fija `lib/branding.ts`). Tintes, hover, títulos, texto de énfasis y colores de gráficas se **derivan** de ellos con `color-mix` / color relativo OKLCH en `app/globals.css`, así que cualquier color de empresa da una interfaz coherente.
+- **Contraste verificado (WCAG AA)** con amarillo, ámbar, blanco, turquesa, verde, violeta, rojo y el azul marino por defecto: texto de énfasis ≥ 4,5:1, gráficas y barras ≥ 3:1 (`--marca-texto`, `--grafica-1`, `--grafica-2`).
+- **Componentes** en `components/ui.tsx` (botones, campos con `aria-describedby`, modales tipo hoja en celular, confirmaciones, avisos, selector segmentado, estados vacíos, esqueletos) y `components/comunes.tsx` (indicadores, barra de avance con marca de meta, chips de semáforo y habilitación).
+- **Celular primero:** áreas táctiles ≥ 44 px, navegación inferior con hoja «Más», barras de acción por encima de la navegación, zonas seguras de iPhone, `prefers-reduced-motion`.
+- La última obra elegida se recuerda entre pantallas (`lib/obras.ts`).
+
 ## Pendiente
-Portar los módulos operativos del prototipo (contrato, asistencia, bitácora, control de personal, pagos, finanzas, EPP): hoy aparecen en el menú según licencia, pero muestran «en migración». Más: 2FA, recuperación de contraseña, PWA con modo sin conexión y reportes en PDF.
+2FA, recuperación de contraseña, PWA con modo sin conexión completo y reportes en PDF.
