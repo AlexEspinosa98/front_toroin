@@ -7,14 +7,20 @@ import { useSession } from "@/lib/session";
 import { fechaCorta, fmtCOP, fmtMillones, fmtPct } from "@/lib/format";
 import { hoy, nombreMes } from "@/lib/fechas";
 import { useObras } from "@/lib/obras";
-import { ANIMAR, Aviso, Boton, BotonIcono, Campo, COLOR_GRAFICA, Esqueleto, Input, Modal, Segmentado, Select, Tarjeta, Titulo, Vacio, enfocarPrimerError, useAviso, useConfirmar } from "@/components/ui";
+import { ANIMAR, Aviso, Boton, BotonIcono, Campo, COLOR_GRAFICA, cx, Esqueleto, Input, Modal, Segmentado, Select, Tarjeta, Titulo, Vacio, enfocarPrimerError, useAviso, useConfirmar } from "@/components/ui";
 import { Indicador, SelectorObra } from "@/components/comunes";
 
 type Res = { ingresos_proyectados: number; facturado: number; por_facturar: number; gastos: number; gasto_proyectado: number; utilidad_actual: number; utilidad_proyectada: number; margen_proyectado: number; rete_garantia_retenida: number; obra_ejecutada: number; avance_fisico: number; metodo: string };
-type Fin = { obra: { id: string; nombre: string }; tiene_contrato: boolean; resumen: Res; facturas: { id: string; numero: string; fecha: string; concepto: string; valor: number }[]; gastos: { id: string; fecha: string; categoria: string; descripcion: string; valor: number }[]; meses: { mes: string; facturado: number; gastos: number }[]; categorias: string[] };
+type Rubro = { id: string; nombre: string; padre_id: string; padre: string };
+type Fin = { obra: { id: string; nombre: string }; tiene_contrato: boolean; resumen: Res; rubros: Rubro[];
+  facturas: { id: string; numero: string; fecha: string; concepto: string; valor: number; actividad_id: string }[];
+  gastos: { id: string; fecha: string; categoria: string; descripcion: string; valor: number; actividad_id: string }[];
+  meses: { mes: string; facturado: number; gastos: number }[]; categorias: string[] };
+type FilaRubro = { actividad_id: string; item: string; nombre: string; ubicacion: string; um: string; cantidad: number; ejecutado: number;
+  contratado: number; valor_ejecutado: number; mano_obra: number; gastos: number; facturado: number; costo: number; margen: number; subitems: number };
 type Tipo = "factura" | "gasto";
 
-const nuevoForm = (cat = "Otros") => ({ fecha: hoy(), valor: "", texto: "", numero: "", categoria: cat });
+const nuevoForm = (cat = "Otros") => ({ fecha: hoy(), valor: "", texto: "", numero: "", categoria: cat, actividad_id: "" });
 /** Acepta «1.250.000» o «1250000,50» */
 const aNumero = (s: string) => Number(s.replace(/\./g, "").replace(",", "."));
 
@@ -30,6 +36,7 @@ export default function Finanzas() {
   const [nuevo, setNuevo] = useState<Tipo>();
   const [form, setForm] = useState(nuevoForm());
   const [intento, setIntento] = useState(false);
+  const [rubros, setRubros] = useState<{ obraId: string; filas: FilaRubro[]; sin: { gastos: number; facturado: number } } | null>(null);
   const puede = !me.solo_lectura && me.licencia?.escritura && ["admin", "gerencia", "super_admin"].includes(me.rol);
 
   useEffect(() => {
@@ -46,6 +53,16 @@ export default function Finanzas() {
   }, [obraId, aviso]);
 
   const serie = useMemo(() => (d?.meses ?? []).map((m) => ({ mes: `${nombreMes(Number(m.mes.slice(5))).slice(0, 3)} ${m.mes.slice(2, 4)}`, Facturado: Math.round(m.facturado / 1e5) / 10, Gastos: Math.round(m.gastos / 1e5) / 10 })), [d]);
+  useEffect(() => {
+    if (!obraId) return;
+    let vivo = true;
+    api<{ rubros: FilaRubro[]; sin_imputar: { gastos: number; facturado: number } }>(`obras/${obraId}/rubros`)
+      .then((r) => vivo && setRubros({ obraId, filas: r.rubros, sin: r.sin_imputar })).catch(() => {});
+    return () => { vivo = false; };
+  }, [obraId, res]);
+  const porRubro = rubros?.obraId === obraId ? rubros : null;
+  const nombreRubro = (id: string) => d?.rubros.find((x) => x.id === id)?.nombre ?? "";
+
   const porCat = useMemo(() => {
     const m = new Map<string, number>();
     for (const g of d?.gastos ?? []) m.set(g.categoria, (m.get(g.categoria) ?? 0) + g.valor);
@@ -61,8 +78,8 @@ export default function Finanzas() {
     setIntento(true);
     if (errValor || errTexto || !nuevo) return enfocarPrimerError(document.querySelector("dialog[open]"));
     const ok = nuevo === "factura"
-      ? await enviar(`obras/${obraId}/facturas`, { numero: form.numero.trim(), fecha: form.fecha, concepto: form.texto.trim(), valor }, "POST", "Factura registrada")
-      : await enviar(`obras/${obraId}/gastos`, { fecha: form.fecha, categoria: form.categoria, descripcion: form.texto.trim(), valor }, "POST", "Gasto registrado");
+      ? await enviar(`obras/${obraId}/facturas`, { numero: form.numero.trim(), fecha: form.fecha, concepto: form.texto.trim(), valor, actividad_id: form.actividad_id }, "POST", "Factura registrada")
+      : await enviar(`obras/${obraId}/gastos`, { fecha: form.fecha, categoria: form.categoria, descripcion: form.texto.trim(), valor, actividad_id: form.actividad_id }, "POST", "Gasto registrado");
     if (ok) setNuevo(undefined);
   }
   async function quitar(tipo: Tipo, id: string, texto: string, v: number) {
@@ -72,8 +89,8 @@ export default function Finanzas() {
 
   const r = d?.resumen;
   const movimientos = (vista === "gasto"
-    ? (d?.gastos ?? []).map((g) => ({ id: g.id, fecha: g.fecha, t: g.descripcion || g.categoria, sub: g.categoria, v: g.valor }))
-    : (d?.facturas ?? []).map((f) => ({ id: f.id, fecha: f.fecha, t: f.concepto || "Factura", sub: f.numero ? `Factura ${f.numero}` : "Factura", v: f.valor }))
+    ? (d?.gastos ?? []).map((g) => ({ id: g.id, fecha: g.fecha, t: g.descripcion || g.categoria, sub: g.categoria, v: g.valor, rubro: nombreRubro(g.actividad_id) }))
+    : (d?.facturas ?? []).map((f) => ({ id: f.id, fecha: f.fecha, t: f.concepto || "Factura", sub: f.numero ? `Factura ${f.numero}` : "Factura", v: f.valor, rubro: nombreRubro(f.actividad_id) }))
   ).sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   return (
@@ -168,7 +185,7 @@ export default function Finanzas() {
                   <li key={x.id} className="flex items-center gap-3 py-2.5">
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold">{x.t}</p>
-                      <p className="text-sm text-suave">{fechaCorta(x.fecha)} · {x.sub}</p>
+                      <p className="text-sm text-suave">{fechaCorta(x.fecha)} · {x.sub}{x.rubro ? ` · ${x.rubro}` : ""}</p>
                     </div>
                     <span className="num font-semibold">{fmtCOP(x.v)}</span>
                     {puede && <BotonIcono peligro etiqueta={`Eliminar ${x.t}`} onClick={() => quitar(vista, x.id, x.t, x.v)}><Trash2 className="size-4" aria-hidden /></BotonIcono>}
@@ -177,6 +194,38 @@ export default function Finanzas() {
               </ul>
             )}
           </Tarjeta>
+
+          {!!porRubro?.filas.length && (
+            <Tarjeta className="mt-5" titulo="Costo por ítem del contrato"
+              sub="Lo que el cliente paga por lo ejecutado frente a lo que ha costado: mano de obra de la bitácora más los gastos y compras imputados al ítem.">
+              <div className="-mx-4 overflow-x-auto sm:mx-0">
+                <table className="w-full min-w-[680px] text-sm">
+                  <thead><tr className="border-b border-borde text-left text-xs uppercase tracking-wide text-suave">
+                    <th scope="col" className="px-2 py-2 font-semibold">Ítem</th>
+                    <th scope="col" className="px-2 py-2 text-right font-semibold">Ejecutado</th>
+                    <th scope="col" className="px-2 py-2 text-right font-semibold">Mano de obra</th>
+                    <th scope="col" className="px-2 py-2 text-right font-semibold">Gastos</th>
+                    <th scope="col" className="px-2 py-2 text-right font-semibold">Margen</th>
+                  </tr></thead>
+                  <tbody className="divide-y divide-borde">
+                    {[...porRubro.filas].sort((a, b) => a.margen - b.margen).map((x) => (
+                      <tr key={x.actividad_id}>
+                        <td className="px-2 py-2.5"><span className="font-semibold">{x.nombre}{x.ubicacion ? ` · ${x.ubicacion}` : ""}</span>
+                          <span className="block text-xs text-suave">{fmtCOP(x.contratado)} contratados{x.subitems ? ` · ${x.subitems} subítem${x.subitems === 1 ? "" : "s"}` : ""}</span></td>
+                        <td className="num px-2 text-right">{fmtCOP(x.valor_ejecutado)}</td>
+                        <td className="num px-2 text-right text-suave">{fmtCOP(x.mano_obra)}</td>
+                        <td className="num px-2 text-right text-suave">{fmtCOP(x.gastos)}</td>
+                        <td className={cx("num px-2 text-right font-semibold", x.margen < 0 ? "text-error" : "text-ok")}>{fmtCOP(x.margen)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {(porRubro.sin.gastos > 0 || porRubro.sin.facturado > 0) && (
+                <p className="mt-3 text-sm text-suave">Sin imputar a ningún ítem: {fmtCOP(porRubro.sin.gastos)} en gastos y {fmtCOP(porRubro.sin.facturado)} facturados.</p>
+              )}
+            </Tarjeta>
+          )}
         </>
       )}
 
@@ -198,6 +247,14 @@ export default function Finanzas() {
           <Campo etiqueta="Valor (COP)" error={intento ? errValor : undefined} ayuda={valor > 0 ? fmtCOP(valor) : undefined}>
             <Input inputMode="numeric" className="num" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} />
           </Campo>
+          {!!d?.rubros.length && (
+            <Campo etiqueta="Ítem del contrato (opcional)" ayuda="Para ver cuánto lleva costando ese rubro frente a lo que paga el cliente">
+              <Select value={form.actividad_id} onChange={(e) => setForm({ ...form, actividad_id: e.target.value })}>
+                <option value="">Sin imputar a un ítem</option>
+                {d.rubros.map((x) => <option key={x.id} value={x.id}>{x.padre ? `   ${x.padre} › ${x.nombre}` : x.nombre}</option>)}
+              </Select>
+            </Campo>
+          )}
         </form>
       </Modal>
     </>

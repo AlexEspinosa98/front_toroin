@@ -11,6 +11,7 @@ import { Camera, CircleAlert, CircleCheck, ClipboardList, Pencil } from "lucide-
 import { Aviso, Boton, Buscador, Campo, Chip, Input, Modal, Segmentado, Tarjeta, Textarea, Titulo, Vacio, enfocarPrimerError, useAviso, useConfirmar } from "@/components/ui";
 import { BarraAvance, Miniatura, SelectorObra, SinContrato, nombreActividad } from "@/components/comunes";
 import { useObras } from "@/lib/obras";
+import { registrables } from "@/lib/actividades";
 
 type Persona = { trabajador_id: string; nombre: string; cargo: string; asistio: boolean | null };
 type Contexto = { asistencia_registrada: boolean; personal: Persona[]; motivos_atraso: string[] };
@@ -90,7 +91,7 @@ function PasoTareas({ obraId, fecha, d, disponibles, ausentes, personal, tareas,
   const [instruccion, setInstruccion] = useState("");
   const [buscar, setBuscar] = useState("");
   const [intento, setIntento] = useState(false);
-  const acts = d.actividades;
+  const acts = registrables(d.actividades);
   const sinTarea = disponibles.filter((p) => !tareas[p.trabajador_id]);
   const grupos = acts.map((a) => ({ a, gente: disponibles.filter((p) => tareas[p.trabajador_id]?.actividad_id === a.id) })).filter((g) => g.gente.length);
   const alternar = (id: string) => setSel((s) => { const x = new Set(s); if (x.has(id)) x.delete(id); else x.add(id); return x; });
@@ -187,10 +188,22 @@ function TarjetaAvance({ obraId, fecha, a, registro, gente, personal, semana, mo
   const raiz = useRef<HTMLElement>(null);
   const cambia = <T,>(f: (v: T) => void) => (v: T) => { f(v); setSucio(true); };
 
-  const total = Object.values(valores).reduce((s, v) => s + (v.trim() ? num(v) || 0 : 0), 0);
+  // Se puede escribir en la unidad del subítem o en % de lo que falta por hacer de él
+  const [modo, setModo] = useState<"um" | "pct">("um");
+  const enUm = useCallback((v: string) => (modo === "pct" ? ((num(v) || 0) / 100) * a.cantidad : num(v) || 0), [modo, a.cantidad]);
+  function cambiarModo(m: "um" | "pct") {
+    if (m === modo || !a.cantidad) return;
+    const conv = (x: number) => (m === "pct" ? (x / a.cantidad) * 100 : (x / 100) * a.cantidad);
+    setValores(Object.fromEntries(Object.entries(valores).map(([k, v]) => [k, v.trim() ? String(Math.round(conv(num(v) || 0) * 100) / 100) : v])));
+    setModo(m);
+  }
+  const unidad = modo === "pct" ? "%" : a.um;
+
+  const total = Object.values(valores).reduce((s, v) => s + (v.trim() ? enUm(v) : 0), 0);
   const saldo = a.cantidad - a.ejecutado + (registro?.cantidad ?? 0);
   const errores: string[] = [];
   if (Object.entries(valores).some(([, v]) => v.trim() && !(num(v) >= 0))) errores.push("Hay valores que no son números válidos");
+  if (modo === "pct" && Object.values(valores).some((v) => v.trim() && num(v) > 100)) errores.push("Un porcentaje no puede pasar de 100");
   if (Object.values(valores).every((v) => !v.trim())) errores.push("Escriba el avance de al menos una persona (0 si no avanzó)");
   if (total > saldo + 1e-9) errores.push(`El total (${fmtNum(total)} ${a.um}) supera el saldo del contrato (${fmtNum(saldo)} ${a.um})`);
   if (num(horas) > 0 && !motivo) errores.push("Seleccione el motivo del atraso");
@@ -200,7 +213,7 @@ function TarjetaAvance({ obraId, fecha, a, registro, gente, personal, semana, mo
     setIntento(true);
     if (errores.length) return enfocarPrimerError(raiz.current);
     const por: Record<string, number> = {};
-    for (const [id, v] of Object.entries(valores)) if (v.trim()) por[id] = num(v);
+    for (const [id, v] of Object.entries(valores)) if (v.trim()) por[id] = Math.round(enUm(v) * 1e6) / 1e6;
     try {
       await api("bitacora", { method: "PUT", body: { obra_id: obraId, fecha, actividad_id: a.id, cantidad: total, trabajadores: Object.keys(por), por_trabajador: por, horas_atraso: num(horas) || 0, motivo_atraso: num(horas) > 0 ? motivo : null, acciones: acciones.trim(), observaciones: obs.trim(), fotos } });
       aviso(`Avance guardado: ${fmtNum(total)} ${a.um} en ${nombreActividad(a)}`); await recargar();
@@ -226,13 +239,22 @@ function TarjetaAvance({ obraId, fecha, a, registro, gente, personal, semana, mo
     <section ref={raiz} className={`rounded-xl border bg-white p-4 transition-colors sm:p-5 ${registro && !sucio ? "border-ok/30" : "border-borde"}`}>
       <header className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1 basis-48"><h2 className="font-bold">{nombreActividad(a)}</h2>
+          {a.padre_id && <p className="text-xs text-suave">Subítem de {a.padre}{a.aporta_avance ? ` · ${fmtNum(a.cantidad)} ${a.um} = ${fmtNum(a.equivale)} ${a.um_item}` : " · solo costo"}</p>}
           <div className="mt-1 flex items-center gap-2 text-xs text-suave"><span className="w-24"><BarraAvance valor={pctTotal} etiqueta={`Avance ${a.nombre}`} /></span>Saldo {fmtNum(Math.max(0, saldo - total))} {a.um} después de hoy</div></div>
         {registro && !sucio ? <Chip tono="ok" icono={<CircleCheck className="size-3.5" aria-hidden />}>Guardado</Chip> : sucio ? <Chip tono="alerta" icono={<Pencil className="size-3.5" aria-hidden />}>Sin guardar</Chip> : <Chip>Pendiente</Chip>}
       </header>
       <ul className="divide-y divide-borde">{ids.map((id) => { const sem = semana[`${id}|${a.id}`] ?? 0; return (
         <li key={id} className="flex items-center gap-3 py-2"><label htmlFor={`av-${a.id}-${id}`} className="min-w-0 flex-1"><span className="block font-semibold">{nombre(id)}</span><span className="block text-xs text-suave">{sem > 0 ? `Esta semana en esta actividad: ${fmtNum(sem)} ${a.um}` : "Primer día en esta actividad esta semana"}</span></label>
-          <div className="flex shrink-0 items-center gap-1.5"><Input id={`av-${a.id}-${id}`} className="w-24 text-right" inputMode="decimal" placeholder="0" disabled={lectura} value={valores[id] ?? ""} onChange={(e) => cambia(setValores)({ ...valores, [id]: e.target.value })} /><span className="w-8 text-sm text-suave">{a.um}</span></div></li>); })}</ul>
-      <div className="mt-2 flex items-center justify-between rounded-lg bg-fondo px-3 py-2"><span className="text-sm font-semibold">Total de la actividad hoy</span><span className="text-lg font-extrabold">{fmtNum(total)} {a.um}</span></div>
+          <div className="flex shrink-0 items-center gap-1.5"><Input id={`av-${a.id}-${id}`} className="w-24 text-right" inputMode="decimal" placeholder="0" disabled={lectura} value={valores[id] ?? ""} onChange={(e) => cambia(setValores)({ ...valores, [id]: e.target.value })} /><span className="w-8 text-sm text-suave">{unidad}</span></div></li>); })}</ul>
+      {!lectura && a.cantidad > 0 && (
+        <div className="mt-3"><Segmentado<"um" | "pct"> etiqueta="Cómo se escribe el avance" valor={modo} onChange={cambiarModo}
+          opciones={[{ valor: "um", texto: `En ${a.um}` }, { valor: "pct", texto: "En %" }]} /></div>
+      )}
+      <div className="mt-2 flex items-center justify-between rounded-lg bg-fondo px-3 py-2">
+        <span className="text-sm font-semibold">Total de la actividad hoy</span>
+        <span className="text-right"><span className="text-lg font-extrabold">{fmtNum(total)} {a.um}</span>
+          {a.padre_id && a.aporta_avance && a.cantidad > 0 && <span className="block text-xs text-suave">{fmtNum((total / a.cantidad) * a.equivale)} {a.um_item} del ítem</span>}</span>
+      </div>
       <details className="mt-3" open={!!registro?.horas_atraso || undefined}><summary className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-semibold text-marca">Atraso, acciones y fotos {num(horas) > 0 && <Chip tono="alerta">{horas} h de atraso</Chip>} {fotos.length > 0 && <Chip tono="info" icono={<Camera className="size-3.5" aria-hidden />}>{fotos.length} fotos</Chip>}</summary>
         <div className="space-y-4 pt-2">
           <Campo etiqueta="Horas de atraso / desperdicio" ayuda="0 si no hubo atraso"><Input className="max-w-40" inputMode="decimal" disabled={lectura} value={horas} onChange={(e) => cambia(setHoras)(e.target.value)} /></Campo>

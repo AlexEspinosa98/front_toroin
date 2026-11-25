@@ -1,15 +1,17 @@
 "use client";
 import Link from "next/link";
-import { use, useEffect, useMemo, useState } from "react";
+import { Fragment, use, useCallback, useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, LabelList, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowLeft, Clock, FileText, FileUp, ImageIcon, TrendingUp, Users, Wallet } from "lucide-react";
+import { ArrowLeft, Clock, FileText, FileUp, ImageIcon, Layers, TrendingUp, Users, Wallet } from "lucide-react";
 import { api } from "@/lib/client";
 import { useSession } from "@/lib/session";
 import { fechaCorta, fmtCOP, fmtMillones, fmtNum, fmtPct } from "@/lib/format";
 import { diasEntre, hoy, rango, sumarDias } from "@/lib/fechas";
 import type { DatosObra, RegistroT } from "@/lib/types";
-import { ANIMAR, Aviso, Boton, COLOR_GRAFICA, Esqueleto, Segmentado, Tarjeta, Titulo } from "@/components/ui";
+import { ANIMAR, Aviso, Boton, COLOR_GRAFICA, Chip, Esqueleto, Segmentado, Tarjeta, Titulo } from "@/components/ui";
 import { BarraAvance, ChipSemaforo, Indicador, Miniatura, SinContrato, nombreActividad } from "@/components/comunes";
+import { Subitems } from "@/components/Subitems";
+import { soloItems, subitemsDe, valorUnitario } from "@/lib/actividades";
 
 export default function ObraTablero({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -19,18 +21,20 @@ export default function ObraTablero({ params }: { params: Promise<{ id: string }
   const [presentes, setPresentes] = useState<Record<string, number>>({});
   const [error, setError] = useState("");
   const [orden, setOrden] = useState<"contrato" | "avance">("contrato");
+  const [verSub, setVerSub] = useState<string | null>(null);
   const h = hoy();
 
+  const cargar = useCallback(() => { api<DatosObra>(`obras/${id}/contrato`).then(setD).catch((e) => setError(e.message)); }, [id]);
   useEffect(() => {
-    api<DatosObra>(`obras/${id}/contrato`).then(setD).catch((e) => setError(e.message));
+    cargar();
     if (tieneModulo("bitacora")) api<RegistroT[]>(`bitacora?obra_id=${id}`).then(setRegs).catch(() => {});
     api<Record<string, number>>(`obras/${id}/presentes?desde=${sumarDias(h, -20)}&hasta=${h}`).then(setPresentes).catch(() => {});
-  }, [id, h, tieneModulo]);
+  }, [id, h, tieneModulo, cargar]);
 
   const c = d?.contrato;
   const datos = useMemo(() => {
     if (!d || !c) return null;
-    const vu = new Map(d.actividades.map((a) => [a.id, a.valor_unitario]));
+    const vu = new Map(d.actividades.map((a) => [a.id, valorUnitario(a, d.actividades)]));
     const total = d.resumen.valor_contrato || 1;
     const plazo = Math.max(1, diasEntre(c.fecha_inicio, c.fecha_fin));
     const fin = h < c.fecha_fin ? h : c.fecha_fin;
@@ -58,7 +62,8 @@ export default function ObraTablero({ params }: { params: Promise<{ id: string }
   if (!c || !datos) return <>{volver}<Titulo sub={d.obra.ciudad}>{d.obra.nombre}</Titulo>{puedeContrato ? <SinContrato obraId={id} /> : <Aviso>Esta obra aún no tiene contrato cargado.</Aviso>}</>;
 
   const ro = d.resumen;
-  const acts = [...d.actividades.map((a) => ({ a, pct: Math.min(1, a.ejecutado / a.cantidad) }))];
+  const items = soloItems(d.actividades);
+  const acts = items.map((a) => ({ a, pct: Math.min(1, a.ejecutado / a.cantidad) }));
   if (orden === "avance") acts.sort((x, y) => x.pct - y.pct);
   const nombreAct = (aid: string) => { const a = d.actividades.find((x) => x.id === aid); return a ? nombreActividad(a) : "—"; };
 
@@ -98,16 +103,37 @@ export default function ObraTablero({ params }: { params: Promise<{ id: string }
         </Tarjeta>
       </div>
 
-      <Tarjeta className="mt-5" titulo="Avance por actividad" sub={`${d.actividades.length} actividades del contrato`}
+      <Tarjeta className="mt-5" titulo="Avance por actividad" sub={`${items.length} ítems del contrato${d.actividades.length > items.length ? ` · ${d.actividades.length - items.length} subítems` : ""}`}
         acciones={<Segmentado etiqueta="Ordenar actividades" valor={orden} onChange={setOrden} opciones={[{ valor: "contrato", texto: "Contrato" }, { valor: "avance", texto: "Menor avance" }]} />}>
         <div className="-mx-4 overflow-x-auto sm:mx-0"><table className="w-full min-w-[640px] text-sm">
           <thead><tr className="border-b border-borde text-left text-xs uppercase tracking-wide text-suave"><th className="px-2 py-2 font-semibold">Actividad</th><th className="px-2 py-2 text-right font-semibold">Ejecutado</th><th className="px-2 py-2 text-right font-semibold">Contratado</th><th className="w-48 px-2 py-2 font-semibold">Avance</th><th className="px-2 py-2 text-right font-semibold">Valor ejecutado</th></tr></thead>
           <tbody className="divide-y divide-borde">{acts.map(({ a, pct }) => (
-            <tr key={a.id}>
-              <td className="px-2 py-2.5"><span className="font-semibold">{nombreActividad(a)}</span><span className="block text-xs text-suave">Ítem {a.item || "—"} · {a.capitulo.toLowerCase()}</span></td>
-              <td className="num px-2 text-right">{fmtNum(a.ejecutado)} {a.um}</td><td className="num px-2 text-right text-suave">{fmtNum(a.cantidad)} {a.um}</td>
-              <td className="px-2"><div className="flex items-center gap-2"><BarraAvance valor={pct} etiqueta={`Avance ${a.nombre}`} /><span className="num w-12 shrink-0 whitespace-nowrap text-right font-semibold">{fmtPct(pct)}</span></div></td>
-              <td className="num px-2 text-right">{fmtCOP(Math.min(a.ejecutado, a.cantidad) * a.valor_unitario)}</td></tr>))}</tbody></table></div>
+            <Fragment key={a.id}>
+              <tr>
+                <td className="px-2 py-2.5">
+                  <span className="font-semibold">{nombreActividad(a)}</span>
+                  <span className="block text-xs text-suave">Ítem {a.item || "—"} · {a.capitulo.toLowerCase()}</span>
+                  <button type="button" onClick={() => setVerSub(a.id)} className="mt-1 inline-flex min-h-9 items-center gap-1 text-xs font-semibold text-marca-texto hover:underline">
+                    <Layers className="size-3.5" aria-hidden /> {a.subitems ? `${a.subitems} subítem${a.subitems === 1 ? "" : "s"}` : "Dividir en subítems"}
+                  </button>
+                </td>
+                <td className="num px-2 text-right">{fmtNum(a.ejecutado)} {a.um}</td><td className="num px-2 text-right text-suave">{fmtNum(a.cantidad)} {a.um}</td>
+                <td className="px-2"><div className="flex items-center gap-2"><BarraAvance valor={pct} etiqueta={`Avance ${a.nombre}`} /><span className="num w-12 shrink-0 whitespace-nowrap text-right font-semibold">{fmtPct(pct)}</span></div></td>
+                <td className="num px-2 text-right">{fmtCOP(Math.min(a.ejecutado, a.cantidad) * a.valor_unitario)}</td>
+              </tr>
+              {subitemsDe(d.actividades, a.id).map((s) => (
+                <tr key={s.id} className="bg-fondo/60">
+                  <td className="py-2 pl-6 pr-2">
+                    <span className="text-sm">{s.nombre}</span>
+                    {!s.aporta_avance ? <Chip tono="neutro">Solo costo</Chip> : <span className="block text-xs text-suave">1 {s.um} = {fmtNum(s.cantidad ? s.equivale / s.cantidad : 0)} {a.um}</span>}
+                  </td>
+                  <td className="num px-2 text-right">{fmtNum(s.ejecutado)} {s.um}</td>
+                  <td className="num px-2 text-right text-suave">{fmtNum(s.cantidad)} {s.um}</td>
+                  <td className="px-2"><div className="flex items-center gap-2"><BarraAvance valor={Math.min(1, s.cantidad ? s.ejecutado / s.cantidad : 0)} etiqueta={`Avance ${s.nombre}`} /><span className="num w-12 shrink-0 whitespace-nowrap text-right font-semibold">{fmtPct(s.cantidad ? s.ejecutado / s.cantidad : 0)}</span></div></td>
+                  <td className="num px-2 text-right text-suave">{s.aporta_avance ? `${fmtNum(s.aporte ?? 0)} ${a.um}` : "—"}</td>
+                </tr>
+              ))}
+            </Fragment>))}</tbody></table></div>
       </Tarjeta>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-2">
@@ -125,6 +151,8 @@ export default function ObraTablero({ params }: { params: Promise<{ id: string }
       </div>
       {datos.fotos.length > 0 && <Tarjeta className="mt-5" titulo="Fotos recientes" sub="Con marca de agua de obra, fecha y hora"><div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-8">{datos.fotos.map((f) => <Miniatura key={f} id={f} />)}</div></Tarjeta>}
       {datos.fotos.length === 0 && <p className="mt-5 flex items-center gap-2 text-sm text-suave"><ImageIcon className="size-4" aria-hidden /> Las fotos que suba el residente en la bitácora aparecerán aquí.</p>}
+
+      <Subitems obraId={id} actividadId={verSub} puedeEditar={!!puedeContrato} onCerrar={() => setVerSub(null)} onGuardado={cargar} />
     </>
   );
 }

@@ -5,6 +5,7 @@ import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/client";
 import { contratoVacio, type ActividadLeida, type ContratoLeido } from "@/lib/contratoParser";
+import { soloItems } from "@/lib/actividades";
 import { leerContratoPDF } from "@/lib/pdf";
 import { fechaCorta, fmtCOP, fmtNum } from "@/lib/format";
 import type { DatosObra } from "@/lib/types";
@@ -26,7 +27,8 @@ export default function CargarContrato({ params }: { params: Promise<{ id: strin
   useEffect(() => {
     api<DatosObra>(`obras/${id}/contrato`).then((d) => {
       setObra(d);
-      if (d.contrato) setC({ ...contratoVacio(), ...d.contrato, actividades: d.actividades.map((a) => ({ ...a })), ingresos_proyectados: d.obra.ingresos_proyectados });
+      // Solo los ítems del contrato: los subítems de la empresa se manejan aparte, desde el tablero de la obra
+      if (d.contrato) setC({ ...contratoVacio(), ...d.contrato, actividades: soloItems(d.actividades).map((a) => ({ ...a })), ingresos_proyectados: d.obra.ingresos_proyectados });
     }).catch((e) => setError(e.message));
   }, [id]);
 

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Building2, ChevronRight, Info, Trash2, Upload, UserPlus, Users } from "lucide-react";
+import { Building2, ChevronRight, Info, Plus, Trash2, Upload, UserPlus, Users } from "lucide-react";
 import { api } from "@/lib/client";
 import { useSession } from "@/lib/session";
 import { fechaCorta, fmtCOP } from "@/lib/format";
@@ -10,8 +10,8 @@ import { leerExcelPersonal } from "@/lib/excel";
 import { useObras } from "@/lib/obras";
 import { Aviso, Boton, Buscador, Campo, Chip, cx, Esqueleto, Input, Modal, Segmentado, Select, Titulo, Vacio, useAviso, useConfirmar } from "@/components/ui";
 import { ChipHabilitacion } from "@/components/comunes";
+import { AsignarObra, FormaDePago, TEXTO_PAGO, type Asignacion as Asig, type Modalidad } from "@/components/AsignarObra";
 
-type Asig = { id: string; trabajador_id: string; obra_id: string; fecha_ingreso: string; fecha_retiro: string | null };
 type T = {
   id: string; nombre: string; cedula: string; cargo: string; telefono: string;
   examen_fecha: string | null; examen_vence: string | null; alturas_fecha: string | null; alturas_vence: string | null; jornal: number | null; notas: string[];
@@ -46,7 +46,9 @@ export default function Personal() {
   const [estadoF, setEstadoF] = useState<"todos" | EstadoHab>("todos");
   const [edit, setEdit] = useState<Partial<T> | null>(null);
   const [inicial, setInicial] = useState("");
-  const [asig, setAsig] = useState({ obraId: "", fecha: hoy() });
+  const [asig, setAsig] = useState({ obraId: "", fecha: hoy(), modalidad: "" as Modalidad, jornal: "" });
+  const [asignando, setAsignando] = useState<T | null>(null);
+  const [pago, setPago] = useState<{ a: Asig; modalidad: Modalidad; jornal: string } | null>(null);
   const [importando, setImportando] = useState<{ hecho: number; total: number } | null>(null);
   const archivo = useRef<HTMLInputElement>(null);
   const puedeEscribir = !me.solo_lectura && me.licencia?.escritura && ["admin", "gerencia", "rrhh", "super_admin"].includes(me.rol);
@@ -63,7 +65,7 @@ export default function Personal() {
     (!q || `${f.t.nombre} ${f.t.cedula} ${f.t.cargo}`.toLowerCase().includes(q.toLowerCase())) &&
     (!obraF || f.as.some((a) => a.obra_id === obraF)) && (estadoF === "todos" || f.h.estado === estadoF));
 
-  const abrir = (t: Partial<T>) => { setEdit({ ...t }); setInicial(JSON.stringify(t)); setAsig({ obraId: "", fecha: hoy() }); };
+  const abrir = (t: Partial<T>) => { setEdit({ ...t }); setInicial(JSON.stringify(t)); setAsig({ obraId: "", fecha: hoy(), modalidad: "", jornal: "" }); };
   const sucio = !!edit && JSON.stringify(edit) !== inicial;
   const set = <K extends keyof T>(k: K, v: T[K] | null) => setEdit((x) => ({ ...x, [k]: v }));
   const fechaCampo = (etiqueta: string, k: "examen_fecha" | "examen_vence" | "alturas_fecha" | "alturas_vence") => (
@@ -79,7 +81,7 @@ export default function Personal() {
       if (id) await api(`personal/${id}`, { method: "PUT", body });
       else {
         const nuevo = await api<T>("personal", { method: "POST", body });
-        if (asig.obraId) await api("asignaciones", { method: "POST", body: { trabajador_id: nuevo.id, obra_id: asig.obraId, fecha_ingreso: asig.fecha } });
+        if (asig.obraId) await api("asignaciones", { method: "POST", body: { trabajador_id: nuevo.id, obra_id: asig.obraId, fecha_ingreso: asig.fecha, modalidad: asig.modalidad, jornal: asig.jornal === "" ? null : Number(asig.jornal) } });
       }
       setEdit(null); aviso("Trabajador guardado"); void cargar(); void cargarAsig();
     } catch (x) { aviso(x instanceof Error ? x.message : "No se pudo guardar", "error"); }
@@ -91,13 +93,25 @@ export default function Personal() {
   }
   async function asignar() {
     if (!edit?.id || !asig.obraId) return;
-    try { await api("asignaciones", { method: "POST", body: { trabajador_id: edit.id, obra_id: asig.obraId, fecha_ingreso: asig.fecha } }); setAsig({ obraId: "", fecha: hoy() }); aviso("Asignado a la obra"); void cargarAsig(); }
+    try {
+      await api("asignaciones", { method: "POST", body: { trabajador_id: edit.id, obra_id: asig.obraId, fecha_ingreso: asig.fecha,
+        modalidad: asig.modalidad, jornal: asig.jornal === "" ? null : Number(asig.jornal) } });
+      setAsig({ obraId: "", fecha: hoy(), modalidad: "", jornal: "" }); aviso("Asignado a la obra"); void cargarAsig();
+    }
     catch (x) { aviso(x instanceof Error ? x.message : "No se pudo asignar", "error"); }
   }
   async function retirar(a: Asig) {
     if (!(await confirmar({ titulo: `¿Retirar de ${nombreObra(a.obra_id)}?`, texto: "Dejará de aparecer en la asistencia de esa obra desde hoy. El historial se conserva.", aceptar: "Retirar", peligro: true }))) return;
     try { await api(`asignaciones/${a.id}/retiro`, { method: "PATCH", body: { fecha_retiro: hoy() } }); aviso("Retiro registrado"); void cargarAsig(); }
     catch (x) { aviso(x instanceof Error ? x.message : "No se pudo retirar", "error"); }
+  }
+
+  async function guardarPago() {
+    if (!pago) return;
+    try {
+      await api(`asignaciones/${pago.a.id}/pago`, { method: "PATCH", body: { modalidad: pago.modalidad, jornal: pago.jornal === "" ? null : Number(pago.jornal) } });
+      setPago(null); aviso("Forma de pago actualizada"); void cargarAsig();
+    } catch (x) { aviso(x instanceof Error ? x.message : "Error", "error"); }
   }
 
   /** Importa el Excel de la base TOROIN: crea o actualiza (por nombre) y asigna a la obra indicada si existe */
@@ -201,8 +215,9 @@ export default function Personal() {
                       <ChipHabilitacion e={h.estado} />
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {as.map((a) => <Chip key={a.id} tono="info">{nombreObra(a.obra_id)}</Chip>)}
+                      {as.map((a) => <Chip key={a.id} tono="info">{nombreObra(a.obra_id)}{a.modalidad ? ` · ${a.modalidad === "jornal" ? "jornal" : "ejecutado"}` : ""}</Chip>)}
                       {as.length === 0 && <span className="text-sm text-suave">Sin obra asignada</span>}
+                      {puedeEscribir && <Boton tam="sm" variante="secundario" icono={<Plus className="size-4" aria-hidden />} onClick={() => setAsignando(t)}>Asignar a obra</Boton>}
                     </div>
                     <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
                       <div><dt className="text-xs font-semibold uppercase tracking-wide text-suave">Examen médico</dt><dd><Dias d={h.diasExamen} vence={t.examen_vence} /></dd></div>
@@ -235,7 +250,13 @@ export default function Personal() {
                           <span className="block text-xs text-suave">{t.cedula ? `C.C. ${t.cedula}` : "Sin cédula"} · {t.cargo || "Sin cargo"}</span>
                           {t.notas.length > 0 && <span className="mt-1 flex items-center gap-1 text-xs font-medium text-alerta"><Info className="size-3.5" aria-hidden /> Dato a verificar</span>}
                         </td>
-                        <td className="px-3 py-3"><div className="flex flex-wrap gap-1">{as.map((a) => <Chip key={a.id} tono="info">{nombreObra(a.obra_id)}</Chip>)}{as.length === 0 && <span className="text-suave">Sin asignar</span>}</div></td>
+                        <td className="px-3 py-3">
+                          <div className="flex flex-wrap items-center gap-1">
+                            {as.map((a) => <Chip key={a.id} tono="info">{nombreObra(a.obra_id)}{a.modalidad ? ` · ${a.modalidad === "jornal" ? "jornal" : "ejecutado"}` : ""}</Chip>)}
+                            {as.length === 0 && <span className="text-suave">Sin asignar</span>}
+                            {puedeEscribir && <Boton tam="sm" variante="fantasma" icono={<Plus className="size-4" aria-hidden />} onClick={(e) => { e.stopPropagation(); setAsignando(t); }}>Obra</Boton>}
+                          </div>
+                        </td>
                         <td className="px-3 py-3"><Dias d={h.diasExamen} vence={t.examen_vence} /></td>
                         <td className="px-3 py-3"><Dias d={h.diasAlturas} vence={t.alturas_vence} /></td>
                         <td className="px-3 py-3"><ChipHabilitacion e={h.estado} /></td>
@@ -281,8 +302,15 @@ export default function Personal() {
                 <ul className="mb-3 space-y-1.5">
                   {asignacionesEdit.map((a) => (
                     <li key={a.id} className="flex items-center justify-between gap-2 text-sm">
-                      <span className="flex min-w-0 flex-wrap items-center gap-2"><Building2 className="size-4 shrink-0 text-marca-texto" aria-hidden /><strong>{nombreObra(a.obra_id)}</strong> desde {fechaCorta(a.fecha_ingreso)}{a.fecha_retiro && <Chip>Retirado {fechaCorta(a.fecha_retiro)}</Chip>}</span>
-                      {!a.fecha_retiro && <Boton type="button" tam="sm" variante="peligro" onClick={() => retirar(a)}>Retirar</Boton>}
+                      <span className="flex min-w-0 flex-wrap items-center gap-2"><Building2 className="size-4 shrink-0 text-marca-texto" aria-hidden /><strong>{nombreObra(a.obra_id)}</strong> desde {fechaCorta(a.fecha_ingreso)}
+                        <Chip tono={a.modalidad ? "info" : "neutro"}>{TEXTO_PAGO[a.modalidad]}{a.modalidad === "jornal" && a.jornal ? ` ${fmtCOP(a.jornal)}` : ""}</Chip>
+                        {a.fecha_retiro && <Chip>Retirado {fechaCorta(a.fecha_retiro)}</Chip>}</span>
+                      {!a.fecha_retiro && (
+                        <span className="flex shrink-0 gap-1">
+                          <Boton type="button" tam="sm" variante="secundario" onClick={() => setPago({ a, modalidad: a.modalidad, jornal: a.jornal == null ? "" : String(a.jornal) })}>Pago</Boton>
+                          <Boton type="button" tam="sm" variante="peligro" onClick={() => retirar(a)}>Retirar</Boton>
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -295,8 +323,25 @@ export default function Personal() {
                 <Input aria-label="Fecha de ingreso" type="date" value={asig.fecha} onChange={(e) => setAsig({ ...asig, fecha: e.target.value })} />
                 {edit.id && <Boton type="button" variante="secundario" disabled={!asig.obraId} onClick={asignar}>Asignar</Boton>}
               </div>
+              {asig.obraId && (
+                <div className="mt-3 space-y-3">
+                  <FormaDePago modalidad={asig.modalidad} jornal={asig.jornal} onCambio={(modalidad, jornal) => setAsig({ ...asig, modalidad, jornal })} />
+                </div>
+              )}
               {!edit.id && <p className="mt-1 text-xs text-suave">Se asignará al guardar.</p>}
             </fieldset>
+          </form>
+        )}
+      </Modal>
+
+      <AsignarObra trabajador={asignando} obras={obras} asignadas={asignando ? vigentes(asignando.id).map((a) => a.obra_id) : []}
+        onCerrar={() => setAsignando(null)} onHecho={cargarAsig} />
+
+      <Modal abierto={!!pago} onCerrar={() => setPago(null)} titulo={pago ? `Pago en ${nombreObra(pago.a.obra_id)}` : ""}
+        pie={<><Boton type="button" variante="secundario" onClick={() => setPago(null)}>Cancelar</Boton><Boton type="submit" form="form-pago">Guardar</Boton></>}>
+        {pago && (
+          <form id="form-pago" onSubmit={(e) => { e.preventDefault(); void guardarPago(); }} className="space-y-4" noValidate>
+            <FormaDePago modalidad={pago.modalidad} jornal={pago.jornal} onCambio={(modalidad, jornal) => setPago({ ...pago, modalidad, jornal })} />
           </form>
         )}
       </Modal>

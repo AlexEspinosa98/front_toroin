@@ -11,17 +11,18 @@ import { useObras } from "@/lib/obras";
 import { Aviso, Boton, Buscador, Campo, Chip, cx, Esqueleto, Input, Segmentado, Tarjeta, Titulo, Vacio, useAviso } from "@/components/ui";
 import { Indicador, SelectorObra } from "@/components/comunes";
 
-type Det = { fecha: string; obra_id: string; actividad: string; ubicacion: string; um: string; cantidad_total: number; integrantes: number; parte: number; medido: boolean; tarifa: number; valor: number };
+type Det = { fecha: string; obra_id: string; actividad: string; ubicacion: string; um: string; cantidad_total: number; integrantes: number; parte: number; medido: boolean; tarifa: number; valor: number; pagado: boolean };
 type Sem = { domingo: string; reconocido: boolean };
 type Fila = {
   trabajador_id: string; nombre: string; cedula: string; cargo: string; jornal: number; promedio_diario: number;
+  modalidad: "jornal" | "destajo" | "mixta"; dias_jornal: number; dias_destajo: number; basico_jornal: number;
   dias: { dias_asistidos: number; domingos: number; festivos: number; semanas?: Sem[] };
   detalle: Det[]; sin_tarifa: number; basico: number; descansos: number; dias_descanso: number; ajuste_minimo: number; devengado: number; auxilio: number; salud: number; pension: number; neto: number;
 };
-type Costo = { actividad_id: string; nombre: string; ubicacion: string; um: string; cantidad: number; dias_persona: number; ingreso: number; costo: number; margen: number; costo_unitario: number; valor_unitario: number; tarifa: number | null };
+type Costo = { actividad_id: string; nombre: string; ubicacion: string; um: string; cantidad: number; dias_persona: number; ingreso: number; costo: number; margen: number; costo_unitario: number; valor_unitario: number; tarifa: number | null; padre_id: string; padre: string };
 type Cfg = { modalidad_pago: "jornal" | "destajo"; regla_dominical: string; jornal_minimo: number; jornal_base: number; factor_prestacional: number; smmlv: number; aux_transporte: number };
 type Resp = { config: Cfg; filas: Fila[]; totales: Record<string, number>; costos: Costo[]; sin_tarifa: number };
-type Tarifa = { id: string; nombre: string; ubicacion: string; um: string; valor_unitario: number; tarifa: number | null };
+type Tarifa = { id: string; nombre: string; ubicacion: string; um: string; valor_unitario: number; tarifa: number | null; padre_id: string; padre: string; equivale: number; um_item: string; aporta_avance: boolean; se_paga: boolean };
 type Periodo = "q1" | "q2" | "mes";
 
 const nombreAct = (a: { actividad?: string; nombre?: string; ubicacion: string }) => `${a.actividad ?? a.nombre}${a.ubicacion ? ` · ${a.ubicacion}` : ""}`;
@@ -68,7 +69,8 @@ export default function Pagos() {
 
   const liqs = useMemo(() => datos?.filas ?? [], [datos]);
   const cfg = datos?.config;
-  const destajo = cfg?.modalidad_pago === "destajo";
+  // Con forma de pago por asignación, basta con que alguien se pague por ejecutado
+  const destajo = cfg?.modalidad_pago === "destajo" || liqs.some((f) => f.modalidad !== "jornal");
   const visibles = useMemo(() => liqs.filter((l) => !buscar || l.nombre.toLowerCase().includes(buscar.toLowerCase())), [liqs, buscar]);
   const bajoMinimo = liqs.filter((l) => l.ajuste_minimo > 0);
   const deducciones = liqs.reduce((s, l) => s + l.salud + l.pension, 0);
@@ -167,7 +169,9 @@ export default function Pagos() {
                                   {l.nombre}
                                 </button>
                                 <span className="block pl-6 text-xs text-suave">
-                                  {destajo ? `Promedio ${fmtCOP(l.promedio_diario)}/día` : `Jornal ${fmtCOP(l.jornal)}`}
+                                  {l.modalidad === "jornal" ? `Por jornal · ${fmtCOP(l.basico_jornal && l.dias_jornal ? l.basico_jornal / l.dias_jornal : l.jornal)}/día`
+                                    : l.modalidad === "mixta" ? `Mixto · ${l.dias_jornal} días por jornal y ${l.dias_destajo} por ejecutado`
+                                    : `Por ejecutado · promedio ${fmtCOP(l.promedio_diario)}/día`}
                                   {l.ajuste_minimo > 0 && <span className="font-semibold text-alerta"> · bajo el mínimo</span>}
                                 </span>
                               </td>
@@ -208,7 +212,7 @@ export default function Pagos() {
                                                     <span className="block text-xs text-suave">{nombreObra(d.obra_id)} · cuadrilla de {d.integrantes} · total {fmtNum(d.cantidad_total)} {d.um} · {d.medido ? "medido por el residente" : "repartido en partes iguales"}</span>
                                                   </td>
                                                   <td className="num whitespace-nowrap px-3 py-1.5 text-right">{fmtNum(d.parte)} {d.um}</td>
-                                                  {destajo && <td className="num whitespace-nowrap px-3 py-1.5 text-right">{d.tarifa ? fmtCOP(d.valor) : <Chip tono="alerta">Sin tarifa</Chip>}</td>}
+                                                  {destajo && <td className="num whitespace-nowrap px-3 py-1.5 text-right">{!d.pagado ? <Chip tono="neutro">Pago por jornal</Chip> : d.tarifa ? fmtCOP(d.valor) : <Chip tono="alerta">Sin tarifa</Chip>}</td>}
                                                 </tr>
                                               ))}
                                             </tbody>
@@ -221,7 +225,10 @@ export default function Pagos() {
                                     </div>
                                     <dl className="space-y-1.5 rounded-lg border border-borde bg-white p-3 text-sm">
                                       {([
-                                        [`${destajo ? "Destajo" : "Jornales"} (${l.dias.dias_asistidos} días)`, l.basico],
+                                        ...(l.modalidad === "mixta"
+                                          ? [[`Jornales (${l.dias_jornal} días)`, l.basico_jornal] as [string, number],
+                                             [`Ejecutado (${l.dias_destajo} días)`, l.basico - l.basico_jornal] as [string, number]]
+                                          : [[`${l.modalidad === "destajo" ? "Ejecutado" : "Jornales"} (${l.dias.dias_asistidos} días)`, l.basico] as [string, number]]),
                                         [`Domingos y festivos (${l.dias_descanso})`, l.descansos],
                                         ...(l.ajuste_minimo ? [["Ajuste al salario mínimo", l.ajuste_minimo] as [string, number]] : []),
                                         ["Devengado", l.devengado],
@@ -308,8 +315,8 @@ export default function Pagos() {
               </Tarjeta>
 
               {destajo && tarifas.length > 0 && (
-                <Tarjeta className="mt-5" titulo="Tarifas de destajo por actividad" sub="Lo que se paga a la cuadrilla por unidad. Se guarda al salir del campo.">
-                  {tarifas.some((t) => !t.tarifa) && (
+                <Tarjeta className="mt-5" titulo="Tarifas de destajo por actividad" sub="Lo que se paga a la cuadrilla por unidad, en las unidades de la empresa. Se guarda al salir del campo.">
+                  {tarifas.some((t) => t.se_paga && !t.tarifa) && (
                     <p className="mb-3 flex items-start gap-2 rounded-lg bg-alerta-50 px-3 py-2 text-sm text-alerta"><TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden /> Las actividades sin tarifa no suman al pago a destajo.</p>
                   )}
                   <div className="-mx-4 overflow-x-auto sm:mx-0">
@@ -318,18 +325,23 @@ export default function Pagos() {
                         <tr className="border-b border-borde text-left text-xs uppercase tracking-wide text-suave">
                           <th scope="col" className="px-4 py-2 font-semibold sm:px-2">Actividad</th>
                           <th scope="col" className="px-2 py-2 font-semibold">Unidad</th>
+                          <th scope="col" className="px-2 py-2 font-semibold">Equivale a</th>
                           <th scope="col" className="px-2 py-2 text-right font-semibold">Valor contrato</th>
                           <th scope="col" className="px-2 py-2 text-right font-semibold">Tarifa destajo</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-borde">
                         {tarifas.map((t) => (
-                          <tr key={t.id}>
-                            <td className="px-4 py-2 font-semibold sm:px-2">{nombreAct(t)}</td>
+                          <tr key={t.id} className={t.padre_id ? "bg-fondo/60" : undefined}>
+                            <td className={`py-2 font-semibold ${t.padre_id ? "pl-6 pr-2" : "px-4 sm:px-2"}`}>{nombreAct(t)}
+                              {!t.se_paga && <span className="block text-xs font-normal text-suave">Se paga en sus subítems</span>}
+                              {t.padre_id && !t.aporta_avance && <span className="block text-xs font-normal text-suave">Solo costo</span>}
+                            </td>
                             <td className="px-2 py-2 text-suave">{t.um}</td>
+                            <td className="num px-2 py-2 text-suave">{t.padre_id && t.aporta_avance ? `${fmtNum(t.equivale)} ${t.um_item}` : "—"}</td>
                             <td className="num px-2 py-2 text-right text-suave">{fmtCOP(t.valor_unitario)}</td>
                             <td className="px-2 py-2 text-right">
-                              {puede ? (
+                              {!t.se_paga ? <span className="text-suave">—</span> : puede ? (
                                 <Input key={`${t.id}-${t.tarifa}`} aria-label={`Tarifa de destajo de ${t.nombre}`} type="number" inputMode="decimal" min={0} defaultValue={t.tarifa ?? ""} className="num ml-auto min-h-11 w-32 py-1 text-right text-sm pointer-fine:min-h-9"
                                   onBlur={(e) => { if (e.target.value !== String(t.tarifa ?? "")) void fijar(t.id, e.target.value); }} />
                               ) : <span className="num">{t.tarifa ? fmtCOP(t.tarifa) : "—"}</span>}
