@@ -11,8 +11,9 @@ import { BarraAvance, Indicador, SelectorObra } from "@/components/comunes";
 type Obra = { id: string; nombre: string };
 type Cat = { categoria: string; presupuestado: number; real: number; desviacion: number; consumido: number | null };
 type Item = { id?: string; categoria: string; concepto: string; valor: number; actividad_id: string };
+type Act = { id: string; nombre: string; padre_id: string; padre: string; subitems: number };
 type Datos = {
-  obra: Obra; tiene_contrato: boolean; items: Item[]; actividades: { id: string; nombre: string }[]; categorias_pres: string[]; categorias: Cat[];
+  obra: Obra; tiene_contrato: boolean; items: Item[]; actividades: Act[]; categorias_pres: string[]; categorias: Cat[];
   por_actividad: { actividad_id: string; actividad: string; presupuestado: number; real: number; desviacion: number; consumido: number | null }[];
   resumen: { presupuesto: number; real: number; desviacion: number; consumido: number | null; avance_fisico: number; valor_ganado: number; cpi: number | null; estimado_final: number; desviacion_proyectada: number; confiable: boolean; semaforo: string };
 };
@@ -85,7 +86,7 @@ export default function Presupuesto() {
             <p className="mt-2 text-xs text-suave">La mano de obra real sale de la bitácora y del jornal o la tarifa de destajo; lo demás, de los gastos registrados en Finanzas y de las compras recibidas.</p>
           </Tarjeta></div>
           {d.por_actividad.length > 0 && (
-            <div className="mt-5"><Tarjeta titulo="Mano de obra por actividad">
+            <div className="mt-5"><Tarjeta titulo="Mano de obra por actividad" sub="Un ítem partido en subítems trae lo pagado en ellos, incluidos los costos de apoyo.">
               <Tabla cabeceras={["Actividad", "Presupuestado", "Real", "Desviación", "Consumido"]}>
                 {d.por_actividad.map((a) => (
                   <tr key={a.actividad_id}><td className="num px-3 py-2.5">{a.actividad}</td><td className="num px-3 py-2.5">{fmtCOP(a.presupuestado)}</td><td className="num px-3 py-2.5">{fmtCOP(a.real)}</td>
@@ -105,7 +106,7 @@ export default function Presupuesto() {
                 <Select aria-label="Categoría" value={it.categoria} onChange={(e) => setItem(i, { categoria: e.target.value, actividad_id: "" })}>{d.categorias_pres.map((c) => <option key={c}>{c}</option>)}</Select>
                 <div className="grid gap-2">
                   <Input aria-label="Concepto" placeholder="Concepto" value={it.concepto} onChange={(e) => setItem(i, { concepto: e.target.value })} />
-                  {it.categoria === "Mano de obra" && <Select aria-label="Actividad" value={it.actividad_id} onChange={(e) => setItem(i, { actividad_id: e.target.value })}><option value="">Sin actividad (general)</option>{d.actividades.map((a) => <option key={a.id} value={a.id}>{a.nombre}</option>)}</Select>}
+                  {it.categoria === "Mano de obra" && <Select aria-label="Actividad" value={it.actividad_id} onChange={(e) => setItem(i, { actividad_id: e.target.value })}><option value="">Sin actividad (general)</option>{d.actividades.map((a) => <option key={a.id} value={a.id}>{a.padre ? `   ${a.padre} \u203a ${a.nombre}` : a.nombre}</option>)}</Select>}
                 </div>
                 <Input aria-label="Valor" type="number" min={0} placeholder="Valor" value={it.valor || ""} onChange={(e) => setItem(i, { valor: Number(e.target.value) })} />
                 <BotonIcono peligro etiqueta="Quitar renglón" onClick={() => setEdit(edit.filter((_, k) => k !== i))}><Trash2 className="size-4" aria-hidden /></BotonIcono>
@@ -113,7 +114,7 @@ export default function Presupuesto() {
             ))}
             <div className="flex flex-wrap gap-2">
               <Boton variante="secundario" icono={<Plus className="size-4" aria-hidden />} onClick={() => setEdit([...edit, { categoria: "Materiales e insumos", concepto: "", valor: 0, actividad_id: "" }])}>Agregar renglón</Boton>
-              <Boton variante="secundario" onClick={() => setEdit([...edit, ...d.actividades.filter((a) => !edit.some((x) => x.actividad_id === a.id)).map((a) => ({ categoria: "Mano de obra", concepto: "", valor: 0, actividad_id: a.id }))])}>Mano de obra por cada actividad</Boton>
+              <Boton variante="secundario" onClick={() => setEdit([...edit, ...d.actividades.filter((a) => !a.padre_id && !edit.some((x) => x.actividad_id === a.id)).map((a) => ({ categoria: "Mano de obra", concepto: "", valor: 0, actividad_id: a.id }))])}>Mano de obra por cada ítem</Boton>
             </div>
             <div className="flex justify-end gap-2"><Boton variante="secundario" onClick={() => setEdit(null)}>Cancelar</Boton><Boton onClick={guardar}>Guardar presupuesto</Boton></div>
           </div>
