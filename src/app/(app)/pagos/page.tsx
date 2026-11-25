@@ -70,7 +70,11 @@ export default function Pagos() {
   const liqs = useMemo(() => datos?.filas ?? [], [datos]);
   const cfg = datos?.config;
   // Con forma de pago por asignación, basta con que alguien se pague por ejecutado
-  const destajo = cfg?.modalidad_pago === "destajo" || liqs.some((f) => f.modalidad !== "jornal");
+  // Una empresa puede tener las dos formas de pago a la vez: manda lo que haya en el periodo
+  const hayDestajo = liqs.some((f) => f.modalidad !== "jornal");
+  const hayJornal = liqs.some((f) => f.modalidad !== "destajo");
+  const destajo = liqs.length ? hayDestajo : cfg?.modalidad_pago === "destajo";
+  const mixto = hayDestajo && hayJornal;
   const visibles = useMemo(() => liqs.filter((l) => !buscar || l.nombre.toLowerCase().includes(buscar.toLowerCase())), [liqs, buscar]);
   const bajoMinimo = liqs.filter((l) => l.ajuste_minimo > 0);
   const deducciones = liqs.reduce((s, l) => s + l.salud + l.pension, 0);
@@ -82,7 +86,7 @@ export default function Pagos() {
 
   const exportar = () => descargarCSV(`prenomina-${desde}_${hasta}.csv`, [
     ["Trabajador", "Cédula", "Cargo", "Modalidad", "Días trabajados", "Domingos/festivos", "Jornal o promedio diario", "Básico", "Descansos remunerados", "Ajuste al mínimo", "Devengado", "Auxilio de transporte", "Salud 4%", "Pensión 4%", "Neto a pagar"],
-    ...liqs.map((x) => [x.nombre, x.cedula, x.cargo, destajo ? "Destajo" : "Jornal", x.dias.dias_asistidos, x.dias_descanso, Math.round(destajo ? x.promedio_diario : x.jornal), Math.round(x.basico), Math.round(x.descansos), Math.round(x.ajuste_minimo), Math.round(x.devengado), Math.round(x.auxilio), Math.round(x.salud), Math.round(x.pension), Math.round(x.neto)]),
+    ...liqs.map((x) => [x.nombre, x.cedula, x.cargo, x.modalidad === "destajo" ? "Por ejecutado" : x.modalidad === "mixta" ? "Mixto" : "Por jornal", x.dias.dias_asistidos, x.dias_descanso, Math.round(x.modalidad === "jornal" ? x.jornal : x.promedio_diario), Math.round(x.basico), Math.round(x.descansos), Math.round(x.ajuste_minimo), Math.round(x.devengado), Math.round(x.auxilio), Math.round(x.salud), Math.round(x.pension), Math.round(x.neto)]),
   ]);
 
   return (
@@ -107,7 +111,7 @@ export default function Pagos() {
           <details className="group mt-3 rounded-lg bg-marca-50 px-3 text-sm text-tinta">
             <summary className="flex min-h-11 cursor-pointer items-center gap-2 font-semibold">
               <Info className="size-4 shrink-0 text-marca-texto" aria-hidden />
-              <span className="flex-1">{destajo ? "Pago a destajo" : "Pago por jornal"} · ¿cómo se calcula?</span>
+              <span className="flex-1">{mixto ? "Pago por jornal y por ejecutado" : destajo ? "Pago por ejecutado" : "Pago por jornal"} · ¿cómo se calcula?</span>
               <ChevronRight className="size-4 shrink-0 text-suave transition-transform group-open:rotate-90" aria-hidden />
             </summary>
             <p className="pb-3 pl-6">
@@ -148,7 +152,7 @@ export default function Pagos() {
                         <th scope="col" className="min-w-44 px-4 py-2 font-semibold sm:px-2">Trabajador</th>
                         <th scope="col" className="px-2 py-2 text-right font-semibold">Días</th>
                         <th scope="col" className="px-2 py-2 text-right font-semibold">Dom./fest.</th>
-                        <th scope="col" className="px-2 py-2 text-right font-semibold">{destajo ? "Destajo" : "Jornales"}</th>
+                        <th scope="col" className="px-2 py-2 text-right font-semibold">{mixto ? "Básico" : destajo ? "Ejecutado" : "Jornales"}</th>
                         <th scope="col" className="px-2 py-2 text-right font-semibold">Descansos</th>
                         {destajo && <th scope="col" className="px-2 py-2 text-right font-semibold">Ajuste mínimo</th>}
                         <th scope="col" className="px-2 py-2 text-right font-semibold">Auxilio</th>
@@ -279,7 +283,7 @@ export default function Pagos() {
                           <th scope="col" className="px-2 py-2 text-right font-semibold">Ejecutado</th>
                           <th scope="col" className="px-2 py-2 text-right font-semibold">Días-persona</th>
                           <th scope="col" className="px-2 py-2 text-right font-semibold">Precio contrato</th>
-                          <th scope="col" className="px-2 py-2 text-right font-semibold">{destajo ? "Tarifa destajo" : "Costo por unidad"}</th>
+                          <th scope="col" className="px-2 py-2 text-right font-semibold">{destajo ? "Tarifa por unidad" : "Costo por unidad"}</th>
                           <th scope="col" className="px-2 py-2 text-right font-semibold">Ingreso</th>
                           <th scope="col" className="px-2 py-2 text-right font-semibold">Costo</th>
                           <th scope="col" className="px-2 py-2 text-right font-semibold">Margen</th>
@@ -310,14 +314,14 @@ export default function Pagos() {
                   </div>
                 )}
                 <p className="mt-3 text-xs text-suave">
-                  Ordenado de menor a mayor margen: arriba están las actividades donde se gana menos o se pierde ({nombreMes(m)} {anio}). {destajo ? "Costo = cantidad × tarifa de destajo." : "Costo = jornal de cada persona por los días que trabajó en la actividad."} Domingos, festivos, auxilio y prestaciones se reflejan con el factor prestacional.
+                  Ordenado de menor a mayor margen: arriba están las actividades donde se gana menos o se pierde ({nombreMes(m)} {anio}). {mixto ? "Costo = cada persona según cómo se le pague en esa obra: por jornal, el día; por ejecutado, su parte × la tarifa." : destajo ? "Costo = cantidad × tarifa por unidad." : "Costo = jornal de cada persona por los días que trabajó en la actividad."} Domingos, festivos, auxilio y prestaciones se reflejan con el factor prestacional.
                 </p>
               </Tarjeta>
 
               {destajo && tarifas.length > 0 && (
-                <Tarjeta className="mt-5" titulo="Tarifas de destajo por actividad" sub="Lo que se paga a la cuadrilla por unidad, en las unidades de la empresa. Se guarda al salir del campo.">
+                <Tarjeta className="mt-5" titulo="Tarifas de pago por ejecutado" sub="Lo que se paga a la cuadrilla por unidad, en las unidades de la empresa. Se guarda al salir del campo.">
                   {tarifas.some((t) => t.se_paga && !t.tarifa) && (
-                    <p className="mb-3 flex items-start gap-2 rounded-lg bg-alerta-50 px-3 py-2 text-sm text-alerta"><TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden /> Las actividades sin tarifa no suman al pago a destajo.</p>
+                    <p className="mb-3 flex items-start gap-2 rounded-lg bg-alerta-50 px-3 py-2 text-sm text-alerta"><TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden /> Las actividades sin tarifa no suman al pago por ejecutado.</p>
                   )}
                   <div className="-mx-4 overflow-x-auto sm:mx-0">
                     <table className="w-full min-w-[560px] text-sm">
@@ -327,7 +331,7 @@ export default function Pagos() {
                           <th scope="col" className="px-2 py-2 font-semibold">Unidad</th>
                           <th scope="col" className="px-2 py-2 font-semibold">Equivale a</th>
                           <th scope="col" className="px-2 py-2 text-right font-semibold">Valor contrato</th>
-                          <th scope="col" className="px-2 py-2 text-right font-semibold">Tarifa destajo</th>
+                          <th scope="col" className="px-2 py-2 text-right font-semibold">Tarifa por unidad</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-borde">
@@ -342,7 +346,7 @@ export default function Pagos() {
                             <td className="num px-2 py-2 text-right text-suave">{fmtCOP(t.valor_unitario)}</td>
                             <td className="px-2 py-2 text-right">
                               {!t.se_paga ? <span className="text-suave">—</span> : puede ? (
-                                <Input key={`${t.id}-${t.tarifa}`} aria-label={`Tarifa de destajo de ${t.nombre}`} type="number" inputMode="decimal" min={0} defaultValue={t.tarifa ?? ""} className="num ml-auto min-h-11 w-32 py-1 text-right text-sm pointer-fine:min-h-9"
+                                <Input key={`${t.id}-${t.tarifa}`} aria-label={`Tarifa por unidad de ${t.nombre}`} type="number" inputMode="decimal" min={0} defaultValue={t.tarifa ?? ""} className="num ml-auto min-h-11 w-32 py-1 text-right text-sm pointer-fine:min-h-9"
                                   onBlur={(e) => { if (e.target.value !== String(t.tarifa ?? "")) void fijar(t.id, e.target.value); }} />
                               ) : <span className="num">{t.tarifa ? fmtCOP(t.tarifa) : "—"}</span>}
                             </td>
