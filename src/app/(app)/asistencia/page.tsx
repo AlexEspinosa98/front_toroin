@@ -10,7 +10,7 @@ import { useObras } from "@/lib/obras";
 
 type Hab = { estado: "habilitado" | "por-vencer" | "vencido" | "sin-datos"; motivo: string };
 type Fila = { trabajador_id: string; nombre: string; cargo: string; habilitacion: Hab; puede_trabajar: boolean; marca: { asistio: boolean; motivo: string | null; detalle: string } | null };
-type Resp = { registrada: boolean; personal: Fila[]; motivos: string[] };
+type Resp = { registrada: boolean; personal: Fila[]; motivos: string[]; solo_hoy: boolean; hoy: string };
 type Marca = { asistio?: boolean; motivo?: string; detalle?: string };
 
 export default function Asistencia() {
@@ -22,7 +22,11 @@ export default function Asistencia() {
   const [marcas, setMarcas] = useState<Record<string, Marca>>({});
   const [intento, setIntento] = useState(false);
   const [error, setError] = useState("");
-  const puedeEscribir = !me.solo_lectura && me.licencia?.escritura && ["admin", "gerencia", "sst", "residente", "super_admin"].includes(me.rol);
+  const rolEscribe = !me.solo_lectura && me.licencia?.escritura && ["admin", "gerencia", "sst", "residente", "super_admin"].includes(me.rol);
+  // El SST pasa lista el mismo día; los días anteriores los corrige la administración.
+  const soloHoy = !!datos?.solo_hoy;
+  const esHoy = fecha === hoy();
+  const puedeEscribir = rolEscribe && (!soloHoy || esHoy);
 
   const cargar = useCallback(() => {
     if (!obraId) return;
@@ -58,12 +62,15 @@ export default function Asistencia() {
       <Titulo sub="Registro del encargado SST">Asistencia diaria</Titulo>
       <div className="grid max-w-2xl gap-3 sm:grid-cols-[1fr_220px]">
         <SelectorObra obras={obras} valor={obraId} onChange={setObraId} />
-        <Campo etiqueta="Fecha"><Input type="date" value={fecha} max={hoy()} onChange={(e) => e.target.value && setFecha(e.target.value)} /></Campo>
+        <Campo etiqueta="Fecha" ayuda={soloHoy ? "Usted registra la asistencia del día." : undefined}>
+          <Input type="date" value={fecha} min={soloHoy ? hoy() : undefined} max={hoy()} onChange={(e) => e.target.value && setFecha(e.target.value)} />
+        </Campo>
       </div>
       <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-suave">
         {fechaLarga(fecha)}{festivo && <Chip tono="acento">Festivo: {festivo.nombre}</Chip>}{diaSemana(fecha) === 0 && <span>· Domingo</span>}
-        {datos?.registrada && <Chip tono="ok" icono={<CheckCheck className="size-3.5" aria-hidden />}>Ya registrada, puede corregirla</Chip>}
+        {datos?.registrada && <Chip tono="ok" icono={<CheckCheck className="size-3.5" aria-hidden />}>Ya registrada{soloHoy && !esHoy ? "" : ", puede corregirla"}</Chip>}
       </p>
+      {soloHoy && !esHoy && <div className="mt-3"><Aviso tono="alerta">Está viendo un día anterior: puede consultarlo, pero solo guarda la asistencia de hoy. Si hay algo que corregir, pídalo a administración.</Aviso></div>}
       {(error || errObras) && <div className="mt-3"><Aviso tono="error">{error || errObras}</Aviso></div>}
       {!cargando && !obras.length && !error && !errObras && <div className="mt-4"><Vacio titulo="Primero cree una obra" texto="La asistencia se registra por obra." /></div>}
 
