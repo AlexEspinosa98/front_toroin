@@ -8,13 +8,14 @@ import { descargarCSV, quincenas } from "@/lib/csv";
 import { fechaCorta } from "@/lib/format";
 import { hoy, nombreMes } from "@/lib/fechas";
 import { useObras } from "@/lib/obras";
-import { Aviso, Boton, Buscador, Campo, Chip, cx, Esqueleto, Input, Tarjeta, Titulo, Vacio } from "@/components/ui";
+import { Aviso, Boton, Buscador, Campo, Chip, cx, Esqueleto, Input, Segmentado, Tarjeta, Titulo, Vacio } from "@/components/ui";
 import { Indicador, SelectorObra } from "@/components/comunes";
 
 type Sem = { domingo: string; laborables: number; asistidos: number; justificados: number; faltas: string[]; festivos: { fecha: string; nombre: string }[]; reconocido: boolean; razon: string };
 type Fila = { trabajador_id: string; nombre: string; cedula: string; cargo: string; dias_asistidos: number; domingos: number; festivos: number; ausencias_justificadas: number; ausencias_injustificadas: number; total: number; semanas: Sem[] };
 type Resp = { config: { regla_dominical: string; semana: string }; filas: Fila[] };
 type Fest = { fecha: string; nombre: string };
+type Periodo = "q1" | "q2" | "mes";
 
 export default function ControlPersonal() {
   const { me } = useSession();
@@ -27,7 +28,11 @@ export default function ControlPersonal() {
   const [festivos, setFestivos] = useState<Fest[]>([]);
   const [error, setError] = useState("");
   const [anio, m] = mes.split("-").map(Number);
-  const [desde, hasta] = quincenas(anio, m).mes;
+  // El corte de la empresa rara vez es el mes calendario: por eso también se puede pedir cualquier rango.
+  const [per, setPer] = useState<Periodo>("mes");
+  const [rango, setRango] = useState<{ desde: string; hasta: string } | null>(null);
+  const finMes = quincenas(anio, m).mes[1].slice(8);
+  const [desde, hasta] = rango ? [rango.desde, rango.hasta] : quincenas(anio, m)[per];
   const clave = `${desde}|${hasta}|${obraId}`;
   const puedeAjustes = ["admin", "gerencia", "super_admin"].includes(me.rol);
 
@@ -38,33 +43,49 @@ export default function ControlPersonal() {
       .catch((e) => vivo && setError(e.message));
     return () => { vivo = false; };
   }, [desde, hasta, obraId, clave]);
+  // Un rango libre puede cruzar el año: se piden los festivos de los años que toca
+  const anios = [...new Set([desde.slice(0, 4), hasta.slice(0, 4)])].join(",");
   useEffect(() => {
     let vivo = true;
-    api<Fest[]>(`festivos?anio=${anio}`).then((f) => vivo && setFestivos(f)).catch(() => vivo && setFestivos([]));
+    Promise.all(anios.split(",").map((a) => api<Fest[]>(`festivos?anio=${a}`).catch(() => [] as Fest[])))
+      .then((ls) => vivo && setFestivos(ls.flat()));
     return () => { vivo = false; };
-  }, [anio]);
+  }, [anios]);
   const datos = res?.clave === clave ? res.datos : null;
 
   const filas = useMemo(() => datos?.filas ?? [], [datos]);
   const visibles = filas.filter((x) => !q || x.nombre.toLowerCase().includes(q.toLowerCase()));
   const sum = (k: "dias_asistidos" | "domingos" | "ausencias_injustificadas") => filas.reduce((s, x) => s + x[k], 0);
-  const festivosMes = festivos.filter((f) => f.fecha.startsWith(mes));
+  // Los festivos y el título siguen al periodo pedido, no al mes del selector
+  const festivosMes = festivos.filter((f) => f.fecha >= desde && f.fecha <= hasta);
   const legal = datos?.config.regla_dominical !== "literal";
-  const nombreMesTitulo = `${nombreMes(m).charAt(0).toUpperCase()}${nombreMes(m).slice(1)} de ${anio}`;
+  const titulo = rango || per !== "mes"
+    ? `${fechaCorta(desde)} – ${fechaCorta(hasta)}`
+    : `${nombreMes(m).charAt(0).toUpperCase()}${nombreMes(m).slice(1)} de ${anio}`;
 
-  const exportar = () => descargarCSV(`control-personal-${mes}.csv`, [
+  const exportar = () => descargarCSV(`control-personal-${desde}_${hasta}.csv`, [
     ["Trabajador", "Cédula", "Cargo", "Días asistidos", "Domingos reconocidos", "Festivos", "Ausencias justificadas", "Ausencias sin justificar", "Total días"],
     ...filas.map((x) => [x.nombre, x.cedula, x.cargo, x.dias_asistidos, x.domingos, x.festivos, x.ausencias_justificadas, x.ausencias_injustificadas, x.total]),
   ]);
 
   return (
     <>
-      <Titulo sub={datos ? <>Regla del domingo: {legal ? "legal (semana completa, art. 173 CST)" : "más de 5 días"} · semana {datos.config.semana === "LV" ? "de lunes a viernes" : "de lunes a sábado"}. {puedeAjustes && <Link href="/ajustes" className="font-semibold text-marca-texto underline">Cambiar en Ajustes</Link>}</> : "Días de asistencia por persona en el mes, domingos y festivos"}
+      <Titulo sub={datos ? <>Regla del domingo: {legal ? "legal (semana completa, art. 173 CST)" : "más de 5 días"} · semana {datos.config.semana === "LV" ? "de lunes a viernes" : "de lunes a sábado"}. {puedeAjustes && <Link href="/ajustes" className="font-semibold text-marca-texto underline">Cambiar en Ajustes</Link>}</> : "Días de asistencia por persona en el periodo, domingos y festivos"}
         acciones={<Boton variante="secundario" icono={<Download className="size-4" aria-hidden />} onClick={exportar} disabled={!filas.length}>Exportar a Excel (CSV)</Boton>}>Control de personal</Titulo>
 
-      <div className="grid max-w-2xl gap-3 sm:grid-cols-2">
-        <Campo etiqueta="Mes"><Input type="month" value={mes} max={h.slice(0, 7)} onChange={(e) => e.target.value && setMes(e.target.value)} /></Campo>
-        <SelectorObra obras={obras} valor={obraId} onChange={setObraId} todas />
+      <div className="flex flex-wrap items-end gap-3">
+        {!rango && <Campo etiqueta="Mes" className="w-44"><Input type="month" value={mes} max={h.slice(0, 7)} onChange={(e) => e.target.value && setMes(e.target.value)} /></Campo>}
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <span className="text-sm font-semibold text-texto">Periodo</span>
+          <Segmentado etiqueta="Periodo" valor={rango ? "libre" : per}
+            onChange={(v) => { if (v === "libre") setRango({ desde, hasta }); else { setRango(null); setPer(v as Periodo); } }}
+            opciones={[{ valor: "mes", texto: "Mes completo" }, { valor: "q1", texto: "1–15" }, { valor: "q2", texto: `16–${finMes}` }, { valor: "libre", texto: "Fechas" }]} />
+        </div>
+        {rango && <>
+          <Campo etiqueta="Desde" className="w-40"><Input type="date" value={rango.desde} max={rango.hasta} onChange={(e) => e.target.value && setRango({ ...rango, desde: e.target.value })} /></Campo>
+          <Campo etiqueta="Hasta" className="w-40"><Input type="date" value={rango.hasta} min={rango.desde} max={h} onChange={(e) => e.target.value && setRango({ ...rango, hasta: e.target.value })} /></Campo>
+        </>}
+        <SelectorObra className="w-full max-w-xs" obras={obras} valor={obraId} onChange={setObraId} todas />
       </div>
 
       {error && <div className="mt-3"><Aviso tono="error">{error}</Aviso></div>}
@@ -76,15 +97,15 @@ export default function ControlPersonal() {
             <Indicador etiqueta="Personas" valor={filas.length} icono={<Users className="size-5" aria-hidden />} />
             <Indicador etiqueta="Días asistidos" valor={sum("dias_asistidos")} icono={<UserCheck className="size-5" aria-hidden />} />
             <Indicador etiqueta="Domingos reconocidos" valor={sum("domingos")} tono="acento" icono={<Sun className="size-5" aria-hidden />} />
-            <Indicador etiqueta="Festivos del mes" valor={festivosMes.length} icono={<CalendarDays className="size-5" aria-hidden />}
+            <Indicador etiqueta="Festivos del periodo" valor={festivosMes.length} icono={<CalendarDays className="size-5" aria-hidden />}
               detalle={festivosMes.map((f) => `${fechaCorta(f.fecha).slice(0, 6)} ${f.nombre}`).join(" · ") || "Ninguno"} />
           </div>
-          {sum("ausencias_injustificadas") > 0 && <div className="mt-3"><Aviso tono="alerta">Hay {sum("ausencias_injustificadas")} ausencia(s) sin justificar este mes.</Aviso></div>}
+          {sum("ausencias_injustificadas") > 0 && <div className="mt-3"><Aviso tono="alerta">Hay {sum("ausencias_injustificadas")} ausencia(s) sin justificar en este periodo.</Aviso></div>}
 
-          <Tarjeta className="mt-5" titulo={nombreMesTitulo} sub="Toque una persona para ver el detalle semana a semana">
+          <Tarjeta className="mt-5" titulo={titulo} sub="Toque una persona para ver el detalle semana a semana">
             <Buscador className="mb-3 max-w-md" etiqueta="Buscar trabajador" valor={q} onChange={setQ} />
             {filas.length === 0 ? (
-              <Vacio icono={<CalendarDays className="size-6" aria-hidden />} titulo="No hay asistencia registrada en este mes" texto="Los días se totalizan con la asistencia diaria que registra el SST." />
+              <Vacio icono={<CalendarDays className="size-6" aria-hidden />} titulo="No hay asistencia registrada en este periodo" texto="Los días se totalizan con la asistencia diaria que registra el SST." />
             ) : visibles.length === 0 ? (
               <Vacio titulo="Sin resultados" texto="Pruebe con otro nombre." />
             ) : (
