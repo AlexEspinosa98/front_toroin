@@ -26,6 +26,15 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
   return data as T;
 }
 
+/** Descarga un archivo del backend (PDF de un otrosí, por ejemplo) y lo abre en una pestaña nueva. */
+export async function abrirArchivo(path: string): Promise<void> {
+  const r = await fetch(`/api/proxy/${path}`, { headers: { "x-toroin": "1" }, cache: "no-store" });
+  if (!r.ok) throw new ApiError(r.status, mensaje(await r.json().catch(() => null), r.status));
+  const url = URL.createObjectURL(await r.blob());
+  window.open(url, "_blank", "noopener");
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export async function post(url: string, body?: unknown) {
   const r = await fetch(url, {
     method: "POST",

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { Fragment, use, useCallback, useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, LabelList, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowLeft, Clock, FileText, FileUp, ImageIcon, Layers, TrendingUp, Users, Wallet } from "lucide-react";
+import { ArrowLeft, Clock, FilePlus2, FileText, FileUp, ImageIcon, Layers, TrendingUp, Users, Wallet } from "lucide-react";
 import { api } from "@/lib/client";
 import { useSession } from "@/lib/session";
 import { fechaCorta, fmtCOP, fmtMillones, fmtNum, fmtPct } from "@/lib/format";
@@ -71,7 +71,7 @@ export default function ObraTablero({ params }: { params: Promise<{ id: string }
     <>
       {volver}
       <Titulo sub={<span className="flex flex-wrap items-center gap-2">Contrato {c.numero} · {c.contratante} · {fechaCorta(c.fecha_inicio)} – {fechaCorta(c.fecha_fin)} <ChipSemaforo s={ro.semaforo} /></span>}
-        acciones={<>{tieneModulo("finanzas") && <Link href="/finanzas"><Boton variante="secundario" icono={<Wallet className="size-4" aria-hidden />}>Finanzas</Boton></Link>}{puedeContrato && <Link href={`/obras/${id}/contrato`}><Boton variante="secundario" icono={<FileUp className="size-4" aria-hidden />}>Contrato</Boton></Link>}</>}>{d.obra.nombre}</Titulo>
+        acciones={<>{tieneModulo("finanzas") && <Link href="/finanzas"><Boton variante="secundario" icono={<Wallet className="size-4" aria-hidden />}>Finanzas</Boton></Link>}{tieneModulo("contrato") && <Link href={`/obras/${id}/otrosies`}><Boton variante="secundario" icono={<FilePlus2 className="size-4" aria-hidden />}>Otrosíes</Boton></Link>}{puedeContrato && <Link href={`/obras/${id}/contrato`}><Boton variante="secundario" icono={<FileUp className="size-4" aria-hidden />}>Contrato</Boton></Link>}</>}>{d.obra.nombre}</Titulo>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Indicador etiqueta="Avance físico" valor={fmtPct(ro.avance_fisico, 1)} detalle={`Esperado: ${fmtPct(ro.avance_tiempo, 1)}`} tono={ro.semaforo === "atrasada" ? "error" : ro.semaforo === "atencion" ? "alerta" : "ok"} icono={<TrendingUp className="size-5" aria-hidden />} />
@@ -112,7 +112,7 @@ export default function ObraTablero({ params }: { params: Promise<{ id: string }
               <tr>
                 <td className="px-2 py-2.5">
                   <span className="font-semibold">{nombreActividad(a)}</span>
-                  <span className="block text-xs text-suave">Ítem {a.item || "—"} · {a.capitulo.toLowerCase()}</span>
+                  <span className="block text-xs text-suave">Ítem {a.item || "—"} · {a.capitulo.toLowerCase()}{a.otrosi && <span className="ml-1.5 font-semibold text-marca-texto">· {a.otrosi}</span>}</span>
                   <button type="button" onClick={() => setVerSub(a.id)} className="mt-1 inline-flex min-h-9 items-center gap-1 text-xs font-semibold text-marca-texto hover:underline">
                     <Layers className="size-3.5" aria-hidden /> {a.subitems ? `${a.subitems} subítem${a.subitems === 1 ? "" : "s"}` : "Dividir en subítems"}
                   </button>

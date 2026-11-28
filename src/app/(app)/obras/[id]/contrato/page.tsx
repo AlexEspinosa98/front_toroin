@@ -9,13 +9,14 @@ import { soloItems } from "@/lib/actividades";
 import { leerContratoPDF } from "@/lib/pdf";
 import { fechaCorta, fmtCOP, fmtNum } from "@/lib/format";
 import type { DatosObra } from "@/lib/types";
-import { Aviso, Boton, BotonIcono, Campo, Chip, Input, Select, Tarjeta, Titulo, useAviso } from "@/components/ui";
+import { Aviso, Boton, BotonIcono, Campo, Chip, Input, Select, Tarjeta, Titulo, useAviso, useConfirmar } from "@/components/ui";
 import { Indicador } from "@/components/comunes";
 
 export default function CargarContrato({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
   const aviso = useAviso();
+  const confirmar = useConfirmar();
   const [obra, setObra] = useState<DatosObra | null>(null);
   const [c, setC] = useState<(ContratoLeido & { ingresos_proyectados?: number | null }) | null>(null);
   const [leyendo, setLeyendo] = useState(false);
@@ -28,13 +29,19 @@ export default function CargarContrato({ params }: { params: Promise<{ id: strin
     api<DatosObra>(`obras/${id}/contrato`).then((d) => {
       setObra(d);
       // Solo los ítems del contrato: los subítems de la empresa se manejan aparte, desde el tablero de la obra
-      if (d.contrato) setC({ ...contratoVacio(), ...d.contrato, actividades: soloItems(d.actividades).map((a) => ({ ...a })), ingresos_proyectados: d.obra.ingresos_proyectados });
+      if (d.contrato) setC({ ...contratoVacio(), ...d.contrato, actividades: soloItems(d.actividades).filter((a) => !a.otrosi_id).map((a) => ({ ...a })), ingresos_proyectados: d.obra.ingresos_proyectados });
     }).catch((e) => setError(e.message));
   }, [id]);
 
   async function leer(file?: File) {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".pdf")) return setError("El archivo debe ser un PDF.");
+    // Cargar otro PDF reemplaza el contrato entero: para adicionar obra va un otrosí, no un contrato nuevo.
+    if (c && !(await confirmar({
+      titulo: "¿Reemplazar el contrato por este PDF?",
+      texto: `Se descartan los ${c.actividades.length} ítems que están en pantalla y quedan los del PDF nuevo. Para adicionar obra o ampliar el plazo, cierre esto y registre un otrosí.`,
+      aceptar: "Reemplazar", peligro: true,
+    }))) { if (input.current) input.current.value = ""; return; }
     setError(""); setLeyendo(true);
     try {
       const r = await leerContratoPDF(file);
@@ -84,7 +91,8 @@ export default function CargarContrato({ params }: { params: Promise<{ id: strin
 
       {c && <>
         {c.advertencias.length > 0 && <div className="mt-5 space-y-2">{c.advertencias.map((a) => <Aviso key={a} tono="alerta">{a}</Aviso>)}</div>}
-        {obra && obra.actividades.some((a) => a.ejecutado > 0) && <div className="mt-3"><Aviso tono="error">Esta obra ya tiene avance en la bitácora. No puede quitar actividades con avance registrado; use un otrosí en lugar de reemplazar el contrato.</Aviso></div>}
+        {obra && obra.actividades.some((a) => a.ejecutado > 0) && <div className="mt-3"><Aviso tono="error">Esta obra ya tiene avance en la bitácora. No puede quitar actividades con avance registrado; para adicionar obra o ampliar el plazo use un <Link href={`/obras/${id}/otrosies`} className="font-semibold underline">otrosí</Link>.</Aviso></div>}
+        {obra && obra.actividades.some((a) => a.otrosi_id) && <div className="mt-3"><Aviso>Esta obra tiene ítems que vinieron de un otrosí. Aquí solo se edita el contrato original; aquellos se corrigen en <Link href={`/obras/${id}/otrosies`} className="font-semibold underline">Otrosíes</Link>.</Aviso></div>}
         <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Indicador etiqueta="Valor del contrato" valor={fmtCOP(c.valor_total || suma)} detalle={c.valor_antes_aiu ? `Antes de AIU ${fmtCOP(c.valor_antes_aiu)}` : undefined} icono={<FileText className="size-5" aria-hidden />} />
           <Indicador etiqueta="Actividades" valor={c.actividades.length} detalle={`Suma ${fmtCOP(suma)}`} />

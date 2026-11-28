@@ -41,11 +41,27 @@ export type ActividadT = {
   valor_unitario: number; valor_total: number; tarifa: number | null; advertencias: string[]; ejecutado: number; pendiente: number;
   /** Subítems: el ítem del contrato partido en las unidades con que la empresa le paga al trabajador. */
   padre_id: string; equivale: number; aporta_avance: boolean; subitems: number; registrable: boolean;
+  /** Otrosí que trajo el ítem; vacío si viene del contrato original. */
+  otrosi_id: string; otrosi: string;
   /** Solo en subítems */
   padre?: string; um_item?: string; aporte?: number; ingreso?: number;
 };
-export type ContratoT = { numero: string; contratante: string; nit_contratante: string; contratista: string; proyecto: string; descripcion: string; tipo: string; fecha_inicio: string; fecha_fin: string; valor_total: number; valor_antes_aiu: number; aiu: number; pct_rete_garantia: number; rete_garantia: number; valor_neto: number; forma_pago: string; pagos: { fecha: string; valor: number; concepto: string }[]; advertencias: string[]; archivo: string };
+export type ContratoT = { numero: string; contratante: string; nit_contratante: string; contratista: string; proyecto: string; descripcion: string; tipo: string; fecha_inicio: string; fecha_fin: string; fecha_fin_base: string | null; valor_total: number; valor_base: number; valor_antes_aiu: number; aiu: number; pct_rete_garantia: number; rete_garantia: number; valor_neto: number; forma_pago: string; pagos: { fecha: string; valor: number; concepto: string }[]; advertencias: string[]; archivo: string };
 export type DatosObra = { obra: { id: string; nombre: string; ciudad: string; ingresos_proyectados: number | null }; contrato: ContratoT | null; actividades: ActividadT[]; resumen: ResumenObraT };
+/** Otrosí: adición de valor, prórroga de plazo e ítems nuevos del contrato. */
+export type ItemOtrosiT = { id: string; item: string; grupo: number; capitulo: string; nombre: string; ubicacion: string; um: string; cantidad: number; valor_unitario: number; valor_total: number; tarifa: number | null; advertencias: string[] };
+export type OtrosiT = {
+  id: string; numero: string; fecha: string; descripcion: string; valor_adicion: number; fecha_fin_nueva: string | null;
+  archivo_nombre: string; archivo_bytes: number; tiene_pdf: boolean; creado: string; creado_por: string;
+  items: number; valor_items: number; cuadra: boolean; actividades: ItemOtrosiT[];
+};
+export type DatosOtrosies = {
+  obra: { id: string; nombre: string }; tiene_contrato: boolean;
+  contrato: { numero: string; contratante: string; fecha_inicio: string } | null;
+  valor_base: number; adiciones: number; valor_vigente: number;
+  fecha_fin_base: string | null; fecha_fin_vigente: string | null; dias_prorroga: number; otrosies: OtrosiT[];
+};
+
 export type RegistroT = { id: string; obra_id: string; fecha: string; actividad_id: string; cantidad: number; personas: number; trabajadores: string[]; por_trabajador: Record<string, number>; horas_atraso: number; motivo_atraso: string | null; acciones: string; observaciones: string; fotos: string[]; creado: string };
 
 export type Alerta = { tipo: string; severidad: "alta" | "media" | "baja"; titulo: string; detalle: string; href: string };

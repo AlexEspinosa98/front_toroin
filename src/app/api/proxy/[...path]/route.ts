@@ -22,11 +22,12 @@ async function reenviar(req: Request, ctx: { params: Promise<{ path: string[] }>
     body: ["GET", "HEAD"].includes(req.method) ? undefined : await req.text(),
     cache: "no-store",
   });
-  const texto = await r.text();
-  return new Response(texto || null, {
-    status: r.status,
-    headers: { "content-type": r.headers.get("content-type") ?? "application/json", "cache-control": "no-store" },
-  });
+  // arrayBuffer y no text(): por aquí también pasan los PDF adjuntos a los otrosíes.
+  const cuerpo = r.status === 204 ? null : await r.arrayBuffer();
+  const cabeceras: Record<string, string> = { "content-type": r.headers.get("content-type") ?? "application/json", "cache-control": "no-store" };
+  const adjunto = r.headers.get("content-disposition");
+  if (adjunto) cabeceras["content-disposition"] = adjunto;
+  return new Response(cuerpo && cuerpo.byteLength ? cuerpo : null, { status: r.status, headers: cabeceras });
 }
 
 export { reenviar as GET, reenviar as POST, reenviar as PUT, reenviar as PATCH, reenviar as DELETE };
