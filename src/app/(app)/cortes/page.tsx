@@ -119,7 +119,7 @@ function Pantalla() {
       f.devengado, f.auxilio, f.salud, f.pension, f.prestamo, f.otras, f.neto, f.nota]),
   ]);
 
-  if (!tieneModulo("pagos")) return <Aviso tono="alerta">Su licencia no incluye Pagos al personal.</Aviso>;
+  if (!tieneModulo("pagos")) return <Aviso tono="alerta">Su licencia o su rol no permiten ver los pagos al personal.</Aviso>;
   if (error) return <Aviso tono="error">{error}</Aviso>;
   if (!lista) return <div aria-busy="true" aria-label="Cargando" className="space-y-4"><Esqueleto className="h-8 w-64" /><Esqueleto className="h-28" /><Esqueleto className="h-64" /></div>;
 
@@ -248,7 +248,7 @@ function Pantalla() {
             {lista.map((c) => (
               <tr key={c.id}>
                 <td className="px-3 py-2.5">
-                  <button type="button" onClick={() => abrirCorte(c.id)} className="font-semibold text-marca-texto hover:underline">{fechaCorta(c.desde)} – {fechaCorta(c.hasta)}</button>
+                  <button type="button" onClick={() => abrirCorte(c.id)} className="whitespace-nowrap font-semibold text-marca-texto hover:underline">{fechaCorta(c.desde)} – {fechaCorta(c.hasta)}</button>
                   <span className="block text-xs text-suave">{c.dias} días{c.notas ? ` · ${c.notas}` : ""}</span>
                 </td>
                 <td className="px-3 py-2.5">{c.obra}</td>
