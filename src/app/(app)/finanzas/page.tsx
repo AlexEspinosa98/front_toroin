@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { CalendarRange, Info, Plus, Receipt, Trash2, TrendingUp, Wallet } from "lucide-react";
+import { Info, Plus, Receipt, Trash2, TrendingUp, Wallet } from "lucide-react";
 import { api } from "@/lib/client";
 import { useSession } from "@/lib/session";
 import { fechaCorta, fmtCOP, fmtMillones, fmtPct } from "@/lib/format";
@@ -46,13 +46,13 @@ export default function Finanzas() {
   useEffect(() => {
     if (!obraId) return;
     let vivo = true;
-    api<Fin>(`obras/${obraId}/finanzas${query}`).then((r) => { if (vivo) { setRes({ obraId, d: r }); setIng(String(r.resumen.ingresos_proyectados || "")); setError(""); } }).catch((e) => vivo && setError(e.message));
+    api<Fin>(`obras/${obraId}/finanzas${query}`).then((r) => { if (vivo) { setRes({ obraId, d: r }); setIng(r.resumen.ingresos_proyectados ? String(Math.round(r.resumen.ingresos_proyectados)) : ""); setError(""); } }).catch((e) => vivo && setError(e.message));
     return () => { vivo = false; };
   }, [obraId, query]);
   const d = res?.obraId === obraId ? res.d : null;
 
   const enviar = useCallback(async (ruta: string, body: unknown, method = "POST", ok = "Guardado") => {
-    try { await api(ruta, { method, body }); const r = await api<Fin>(`obras/${obraId}/finanzas${query}`); setRes({ obraId, d: r }); setIng(String(r.resumen.ingresos_proyectados || "")); aviso(ok); return true; }
+    try { await api(ruta, { method, body }); const r = await api<Fin>(`obras/${obraId}/finanzas${query}`); setRes({ obraId, d: r }); setIng(r.resumen.ingresos_proyectados ? String(Math.round(r.resumen.ingresos_proyectados)) : ""); aviso(ok); return true; }
     catch (x) { aviso(x instanceof Error ? x.message : "Error", "error"); return false; }
   }, [obraId, aviso, query]);
 
@@ -72,6 +72,8 @@ export default function Finanzas() {
     for (const g of d?.gastos ?? []) m.set(g.categoria, (m.get(g.categoria) ?? 0) + g.valor);
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [d]);
+  const maxCat = porCat[0]?.[1] || 1;
+  const totalCat = porCat.reduce((t, [, v]) => t + v, 0) || 1;
 
   const valor = aNumero(form.valor);
   const errValor = !(valor > 0) ? "Ingrese un valor mayor a cero" : undefined;
@@ -92,6 +94,8 @@ export default function Finanzas() {
   }
 
   const r = d?.resumen;
+  const p = d?.periodo ?? null;
+  const sinMovimientos = !!d && !corte && d.facturas.length === 0 && d.gastos.length === 0;
   const movimientos = (vista === "gasto"
     ? (d?.gastos ?? []).map((g) => ({ id: g.id, fecha: g.fecha, t: g.descripcion || g.categoria, sub: g.categoria, v: g.valor, rubro: nombreRubro(g.actividad_id) }))
     : (d?.facturas ?? []).map((f) => ({ id: f.id, fecha: f.fecha, t: f.concepto || "Factura", sub: f.numero ? `Factura ${f.numero}` : "Factura", v: f.valor, rubro: nombreRubro(f.actividad_id) }))
@@ -107,26 +111,20 @@ export default function Finanzas() {
           </>
         )}>Control financiero</Titulo>
 
-      <div className="mb-5 grid max-w-3xl gap-3 sm:grid-cols-[1fr_auto]">
-        <SelectorObra className="max-w-sm" obras={obras} valor={obraId} onChange={setObraId} />
-        <div className="flex items-end">
-          <Boton variante="secundario" icono={<CalendarRange className="size-4" aria-hidden />}
-            onClick={() => setCorte(corte ? null : { desde: `${hoy().slice(0, 7)}-01`, hasta: hoy() })}>
-            {corte ? "Ver todo" : "Corte por fechas"}
-          </Boton>
+      {/* Un solo renglón de filtros antes de cualquier cifra: obra y periodo */}
+      <div className="mb-5 flex flex-wrap items-end gap-3">
+        <SelectorObra className="w-full max-w-xs" obras={obras} valor={obraId} onChange={setObraId} />
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <span className="text-sm font-semibold text-texto">Periodo</span>
+          <Segmentado etiqueta="Periodo" valor={corte ? "rango" : "todo"}
+            onChange={(v) => setCorte(v === "todo" ? null : { desde: `${hoy().slice(0, 7)}-01`, hasta: hoy() })}
+            opciones={[{ valor: "todo", texto: "Toda la obra" }, { valor: "rango", texto: "Por fechas" }]} />
         </div>
+        {corte && <>
+          <Campo etiqueta="Desde" className="w-40"><Input type="date" value={corte.desde} max={corte.hasta} onChange={(e) => e.target.value && setCorte({ ...corte, desde: e.target.value })} /></Campo>
+          <Campo etiqueta="Hasta" className="w-40"><Input type="date" value={corte.hasta} min={corte.desde} onChange={(e) => e.target.value && setCorte({ ...corte, hasta: e.target.value })} /></Campo>
+        </>}
       </div>
-      {corte && <div className="mb-5 grid max-w-xl gap-3 sm:grid-cols-2">
-        <Campo etiqueta="Desde"><Input type="date" value={corte.desde} max={corte.hasta} onChange={(e) => e.target.value && setCorte({ ...corte, desde: e.target.value })} /></Campo>
-        <Campo etiqueta="Hasta"><Input type="date" value={corte.hasta} min={corte.desde} onChange={(e) => e.target.value && setCorte({ ...corte, hasta: e.target.value })} /></Campo>
-      </div>}
-      {d?.periodo && <div className="mb-5"><Tarjeta titulo={`Corte ${fechaCorta(d.periodo.desde ?? "")} – ${fechaCorta(d.periodo.hasta ?? "")}`} sub="Solo lo que se movió en esas fechas. Los indicadores de abajo siguen siendo el acumulado de la obra.">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-          <Indicador etiqueta="Facturado en el corte" valor={fmtCOP(d.periodo.facturado)} detalle={`${d.periodo.n_facturas} factura(s)`} icono={<Receipt className="size-5" aria-hidden />} />
-          <Indicador etiqueta="Gastos en el corte" valor={fmtCOP(d.periodo.gastos)} detalle={`${d.periodo.n_gastos} movimiento(s)`} icono={<Wallet className="size-5" aria-hidden />} />
-          <Indicador etiqueta="Neto del corte" valor={fmtCOP(d.periodo.neto)} tono={d.periodo.neto >= 0 ? "ok" : "error"} />
-        </div>
-      </Tarjeta></div>}
       {(error || errObras) && <Aviso tono="error">{error || errObras}</Aviso>}
       {!cargando && !obras.length && !errObras && <Vacio icono={<Wallet className="size-6" aria-hidden />} titulo="Primero cree una obra" texto="El control financiero se lleva obra por obra." />}
       {obraId && !d && !error && <div className="space-y-3"><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <Esqueleto key={i} className="h-28" />)}</div><Esqueleto className="h-64" /></div>}
@@ -134,16 +132,43 @@ export default function Finanzas() {
       {d && r && (
         <>
           {!d.tiene_contrato && <div className="mb-4"><Aviso tono="alerta">Esta obra no tiene contrato cargado; el avance y los ingresos se toman de lo que digite abajo.</Aviso></div>}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Indicador etiqueta="Ingresos proyectados" valor={fmtMillones(r.ingresos_proyectados)} detalle="Valor total del contrato" icono={<Wallet className="size-5" aria-hidden />} />
-            <Indicador etiqueta="Facturado (causado)" valor={fmtMillones(r.facturado)} detalle={r.ingresos_proyectados ? `${fmtPct(r.facturado / r.ingresos_proyectados)} del contrato · por facturar ${fmtMillones(r.por_facturar)}` : `Por facturar ${fmtMillones(r.por_facturar)}`} icono={<Receipt className="size-5" aria-hidden />} />
-            <Indicador etiqueta="Gastos operacionales" valor={fmtMillones(r.gastos)} detalle={`Proyectado al cierre: ${fmtMillones(r.gasto_proyectado)}`} tono="alerta" />
-            <Indicador etiqueta="Utilidad proyectada" valor={fmtMillones(r.utilidad_proyectada)} detalle={`Margen proyectado ${fmtPct(r.margen_proyectado, 1)}`} tono={r.utilidad_proyectada < 0 ? "error" : "ok"} icono={<TrendingUp className="size-5" aria-hidden />} />
-          </div>
-          <p className="mt-2 flex items-start gap-1.5 text-xs text-suave"><Info className="mt-0.5 size-3.5 shrink-0" aria-hidden /> {r.metodo}. Utilidad proyectada = ingresos proyectados − gasto proyectado.</p>
+          {/* Obra sin un solo movimiento: en vez de cuatro ceros, qué registrar y para qué sirve */}
+          {sinMovimientos && <Tarjeta className="mb-5" titulo="Esta obra todavía no tiene movimientos" sub="Con dos cosas registradas, esta pantalla ya le dice si la obra va ganando o perdiendo.">
+            <ol className="space-y-3 text-sm">
+              <li className="flex gap-3"><span className="grid size-6 shrink-0 place-items-center rounded-full bg-marca-50 text-xs font-bold text-marca-texto">1</span>
+                <span><strong className="text-tinta">Registre las facturas</strong> que le pasa al cliente (actas, cortes de obra). Eso llena «Facturado» y le muestra cuánto falta por cobrar del contrato.</span></li>
+              <li className="flex gap-3"><span className="grid size-6 shrink-0 place-items-center rounded-full bg-marca-50 text-xs font-bold text-marca-texto">2</span>
+                <span><strong className="text-tinta">Registre los gastos</strong> de la obra: material, transporte, herramienta, cortes a subcontratistas. Las compras recibidas entran solas desde Compras.</span></li>
+              <li className="flex gap-3"><span className="grid size-6 shrink-0 place-items-center rounded-full bg-marca-50 text-xs font-bold text-marca-texto">3</span>
+                <span><strong className="text-tinta">Impute cada movimiento a un ítem</strong> del contrato cuando pueda. Es lo que llena «Costo por ítem» y le dice cuál actividad le está dando pérdida.</span></li>
+            </ol>
+            {puede && <div className="mt-4 flex flex-wrap gap-2">
+              <Boton icono={<Receipt className="size-4" aria-hidden />} onClick={() => abrir("factura")}>Registrar la primera factura</Boton>
+              <Boton variante="secundario" icono={<Plus className="size-4" aria-hidden />} onClick={() => abrir("gasto")}>Registrar un gasto</Boton>
+            </div>}
+          </Tarjeta>}
+          {/* Las cifras grandes siguen al periodo escogido: si hay corte, mandan las del corte y el acumulado pasa al detalle */}
+          {p ? (
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Indicador etiqueta="Contrato" valor={fmtMillones(r.ingresos_proyectados)} detalle="Valor total · no depende del corte" icono={<Wallet className="size-5" aria-hidden />} />
+              <Indicador etiqueta="Facturado en el corte" valor={fmtMillones(p.facturado)} detalle={`${p.n_facturas} factura(s) · ${fmtMillones(r.facturado)} en toda la obra`} icono={<Receipt className="size-5" aria-hidden />} />
+              <Indicador etiqueta="Gastos en el corte" valor={fmtMillones(p.gastos)} detalle={`${p.n_gastos} movimiento(s) · ${fmtMillones(r.gastos)} en toda la obra`} tono="alerta" />
+              <Indicador etiqueta="Neto del corte" valor={fmtMillones(p.neto)} detalle="Facturado − gastos de esas fechas" tono={p.neto < 0 ? "error" : "ok"} icono={<TrendingUp className="size-5" aria-hidden />} />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Indicador etiqueta="Contrato" valor={fmtMillones(r.ingresos_proyectados)} detalle="Ingresos proyectados de la obra" icono={<Wallet className="size-5" aria-hidden />} />
+              <Indicador etiqueta="Facturado (causado)" valor={fmtMillones(r.facturado)} detalle={r.ingresos_proyectados ? `${fmtPct(r.facturado / r.ingresos_proyectados)} del contrato · por facturar ${fmtMillones(r.por_facturar)}` : `Por facturar ${fmtMillones(r.por_facturar)}`} icono={<Receipt className="size-5" aria-hidden />} />
+              <Indicador etiqueta="Gastos operacionales" valor={fmtMillones(r.gastos)} detalle={`Proyectado al cierre: ${fmtMillones(r.gasto_proyectado)}`} tono="alerta" />
+              <Indicador etiqueta="Utilidad proyectada" valor={fmtMillones(r.utilidad_proyectada)} detalle={`Margen proyectado ${fmtPct(r.margen_proyectado, 1)}`} tono={r.utilidad_proyectada < 0 ? "error" : "ok"} icono={<TrendingUp className="size-5" aria-hidden />} />
+            </div>
+          )}
+          <p className="mt-2 flex items-start gap-1.5 text-xs text-suave"><Info className="mt-0.5 size-3.5 shrink-0" aria-hidden /> {p
+            ? `Las tres cifras del corte cuentan solo lo registrado entre el ${fechaCorta(p.desde ?? "")} y el ${fechaCorta(p.hasta ?? "")}. El contrato y los ítems de abajo son de toda la obra.`
+            : `${r.metodo}. Utilidad proyectada = ingresos proyectados − gasto proyectado.`}</p>
 
           <div className="mt-5 grid gap-5 lg:grid-cols-3">
-            <Tarjeta titulo="Facturado vs. gastos por mes" sub="Millones de pesos" className="lg:col-span-2">
+            <Tarjeta titulo="Facturado vs. gastos por mes" sub="Millones de pesos · historia completa de la obra, no del corte" className="lg:col-span-2">
               {serie.length === 0 ? (
                 <Vacio icono={<Receipt className="size-6" aria-hidden />} titulo="Aún no hay movimientos" texto="Registre facturas y gastos para ver la comparación mensual." />
               ) : (
@@ -168,7 +193,7 @@ export default function Finanzas() {
               )}
             </Tarjeta>
 
-            <Tarjeta titulo="Flujo y cartera">
+            <Tarjeta titulo="Cartera" sub="Lo hecho, lo cobrado y lo retenido">
               <dl className="space-y-3 text-sm">
                 {[
                   ["Obra ejecutada (bitácora)", fmtCOP(r.obra_ejecutada)],
@@ -179,20 +204,41 @@ export default function Finanzas() {
                   <div key={k} className="flex justify-between gap-3 border-b border-borde pb-2 last:border-0"><dt className="text-suave">{k}</dt><dd className="num text-right font-semibold">{v}</dd></div>
                 ))}
               </dl>
-              {puede && (
-                <div className="mt-4 space-y-2">
-                  <Campo etiqueta="Ingresos proyectados" ayuda={Number(ing) > 0 ? `${fmtCOP(Number(ing))}. Por defecto, el valor del contrato; ajústelo si hay otrosí.` : "Vacío = valor total del contrato"}>
+            </Tarjeta>
+          </div>
+
+          <div className="mt-5 grid gap-5 lg:grid-cols-3">
+            {/* Comparar magnitudes entre categorías: barras horizontales ordenadas, con el valor al lado */}
+            <Tarjeta titulo="En qué se va la plata" sub={p ? "Gastos del corte, por categoría" : "Gastos de la obra, por categoría"} className="lg:col-span-2">
+              {porCat.length === 0 ? (
+                <Vacio icono={<Wallet className="size-6" aria-hidden />} titulo="Sin gastos en este periodo" texto="Al registrar gastos aparece aquí en qué se está yendo la plata." />
+              ) : (
+                <ul className="space-y-3">
+                  {porCat.map(([c, v]) => (
+                    <li key={c}>
+                      <div className="flex items-baseline justify-between gap-3 text-sm">
+                        <span className="font-semibold text-tinta">{c}</span>
+                        <span className="num shrink-0 font-semibold">{fmtCOP(v)}<span className="ml-2 font-normal text-suave">{fmtPct(v / totalCat, 0)}</span></span>
+                      </div>
+                      <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-marca-50">
+                        <div className="h-full rounded-full" style={{ width: `${Math.max(2, (v / maxCat) * 100)}%`, background: COLOR_GRAFICA.uno }} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Tarjeta>
+
+            <Tarjeta titulo="Ingresos proyectados" sub="Con qué se compara la utilidad de la obra">
+              <p className="text-sm text-suave">Por defecto es el valor del contrato ({fmtCOP(r.ingresos_proyectados)}). Ajústelo solo si lo que espera facturar es otro.</p>
+              {puede ? (
+                <div className="mt-3 space-y-2">
+                  <Campo etiqueta="Valor" ayuda={Number(ing) > 0 ? fmtCOP(Number(ing)) : "Vacío = valor total del contrato"}>
                     <Input type="number" min={0} inputMode="numeric" className="num" value={ing} onChange={(e) => setIng(e.target.value)} />
                   </Campo>
-                  <Boton variante="secundario" className="w-full" onClick={() => enviar(`obras/${obraId}/ingresos`, { ingresos_proyectados: ing === "" ? null : Number(ing) }, "PUT")}>Guardar ingresos proyectados</Boton>
+                  <Boton variante="secundario" className="w-full" onClick={() => enviar(`obras/${obraId}/ingresos`, { ingresos_proyectados: ing === "" ? null : Number(ing) }, "PUT")}>Guardar</Boton>
                 </div>
-              )}
-              {porCat.length > 0 && (
-                <div className="mt-4 space-y-1.5">
-                  <p className="text-sm font-bold text-tinta">Gastos por categoría</p>
-                  {porCat.map(([c, v]) => <div key={c} className="flex justify-between text-sm"><span className="text-suave">{c}</span><span className="num font-semibold">{fmtMillones(v)}</span></div>)}
-                </div>
-              )}
+              ) : <p className="num mt-3 text-2xl font-extrabold text-tinta">{fmtCOP(r.ingresos_proyectados)}</p>}
             </Tarjeta>
           </div>
 
