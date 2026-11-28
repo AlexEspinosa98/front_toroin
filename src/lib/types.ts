@@ -62,6 +62,14 @@ export type DatosOtrosies = {
   fecha_fin_base: string | null; fecha_fin_vigente: string | null; dias_prorroga: number; otrosies: OtrosiT[];
 };
 
+/** Lo que lleva gastado un ítem del contrato: mano de obra, compras y gastos cargados a él o a sus subítems. */
+export type GastoItemT = { id: string; fecha: string; categoria: string; descripcion: string; valor: number; origen: string; de_compra: boolean; subitem: string };
+export type CostosItemT = {
+  item: { id: string; nombre: string; ubicacion: string; um: string; cantidad: number; valor_unitario: number; contratado: number; ejecutado: number };
+  ingreso_ejecutado: number; mano_obra: number; total_gastos: number; costo: number; margen: number;
+  gastos: GastoItemT[]; categorias: string[];
+};
+
 /** Cortes de pago congelados y préstamos del trabajador. */
 export type PrestamoT = {
   id: string; trabajador_id: string; trabajador: string; fecha: string; concepto: string;

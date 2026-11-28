@@ -114,7 +114,7 @@ export default function ObraTablero({ params }: { params: Promise<{ id: string }
                   <span className="font-semibold">{nombreActividad(a)}</span>
                   <span className="block text-xs text-suave">Ítem {a.item || "—"} · {a.capitulo.toLowerCase()}{a.otrosi && <span className="ml-1.5 font-semibold text-marca-texto">· {a.otrosi}</span>}</span>
                   <button type="button" onClick={() => setVerSub(a.id)} className="mt-1 inline-flex min-h-9 items-center gap-1 text-xs font-semibold text-marca-texto hover:underline">
-                    <Layers className="size-3.5" aria-hidden /> {a.subitems ? `${a.subitems} subítem${a.subitems === 1 ? "" : "s"}` : "Dividir en subítems"}
+                    <Layers className="size-3.5" aria-hidden /> {a.subitems ? `${a.subitems} subítem${a.subitems === 1 ? "" : "s"}` : tieneModulo("finanzas") ? "Subítems y costos" : "Dividir en subítems"}
                   </button>
                 </td>
                 <td className="num px-2 text-right">{fmtNum(a.ejecutado)} {a.um}</td><td className="num px-2 text-right text-suave">{fmtNum(a.cantidad)} {a.um}</td>
@@ -152,7 +152,7 @@ export default function ObraTablero({ params }: { params: Promise<{ id: string }
       {datos.fotos.length > 0 && <Tarjeta className="mt-5" titulo="Fotos recientes" sub="Con marca de agua de obra, fecha y hora"><div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-8">{datos.fotos.map((f) => <Miniatura key={f} id={f} />)}</div></Tarjeta>}
       {datos.fotos.length === 0 && <p className="mt-5 flex items-center gap-2 text-sm text-suave"><ImageIcon className="size-4" aria-hidden /> Las fotos que suba el residente en la bitácora aparecerán aquí.</p>}
 
-      <Subitems obraId={id} actividadId={verSub} puedeEditar={!!puedeContrato} onCerrar={() => setVerSub(null)} onGuardado={cargar} />
+      <Subitems obraId={id} actividadId={verSub} puedeEditar={!!puedeContrato} verCostos={tieneModulo("finanzas")} onCerrar={() => setVerSub(null)} onGuardado={cargar} />
     </>
   );
 }
