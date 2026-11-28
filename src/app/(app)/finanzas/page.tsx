@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Info, Plus, Receipt, Trash2, TrendingUp, Wallet } from "lucide-react";
+import { CalendarRange, Info, Plus, Receipt, Trash2, TrendingUp, Wallet } from "lucide-react";
 import { api } from "@/lib/client";
 import { useSession } from "@/lib/session";
 import { fechaCorta, fmtCOP, fmtMillones, fmtPct } from "@/lib/format";
@@ -12,7 +12,8 @@ import { Indicador, SelectorObra } from "@/components/comunes";
 
 type Res = { ingresos_proyectados: number; facturado: number; por_facturar: number; gastos: number; gasto_proyectado: number; utilidad_actual: number; utilidad_proyectada: number; margen_proyectado: number; rete_garantia_retenida: number; obra_ejecutada: number; avance_fisico: number; metodo: string };
 type Rubro = { id: string; nombre: string; padre_id: string; padre: string };
-type Fin = { obra: { id: string; nombre: string }; tiene_contrato: boolean; resumen: Res; rubros: Rubro[];
+type Periodo = { desde: string | null; hasta: string | null; facturado: number; gastos: number; neto: number; n_facturas: number; n_gastos: number };
+type Fin = { obra: { id: string; nombre: string }; tiene_contrato: boolean; resumen: Res; periodo: Periodo | null; rubros: Rubro[];
   facturas: { id: string; numero: string; fecha: string; concepto: string; valor: number; actividad_id: string }[];
   gastos: { id: string; fecha: string; categoria: string; descripcion: string; valor: number; actividad_id: string }[];
   meses: { mes: string; facturado: number; gastos: number }[]; categorias: string[] };
@@ -37,20 +38,23 @@ export default function Finanzas() {
   const [form, setForm] = useState(nuevoForm());
   const [intento, setIntento] = useState(false);
   const [rubros, setRubros] = useState<{ obraId: string; filas: FilaRubro[]; sin: { gastos: number; facturado: number } } | null>(null);
+  // Corte de facturación: recorta los movimientos a un rango; el resumen de la obra sigue siendo el acumulado
+  const [corte, setCorte] = useState<{ desde: string; hasta: string } | null>(null);
+  const query = corte ? `?desde=${corte.desde}&hasta=${corte.hasta}` : "";
   const puede = !me.solo_lectura && me.licencia?.escritura && ["admin", "gerencia", "super_admin"].includes(me.rol);
 
   useEffect(() => {
     if (!obraId) return;
     let vivo = true;
-    api<Fin>(`obras/${obraId}/finanzas`).then((r) => { if (vivo) { setRes({ obraId, d: r }); setIng(String(r.resumen.ingresos_proyectados || "")); setError(""); } }).catch((e) => vivo && setError(e.message));
+    api<Fin>(`obras/${obraId}/finanzas${query}`).then((r) => { if (vivo) { setRes({ obraId, d: r }); setIng(String(r.resumen.ingresos_proyectados || "")); setError(""); } }).catch((e) => vivo && setError(e.message));
     return () => { vivo = false; };
-  }, [obraId]);
+  }, [obraId, query]);
   const d = res?.obraId === obraId ? res.d : null;
 
   const enviar = useCallback(async (ruta: string, body: unknown, method = "POST", ok = "Guardado") => {
-    try { const r = await api<Fin>(ruta, { method, body }); setRes({ obraId, d: r }); setIng(String(r.resumen.ingresos_proyectados || "")); aviso(ok); return true; }
+    try { await api(ruta, { method, body }); const r = await api<Fin>(`obras/${obraId}/finanzas${query}`); setRes({ obraId, d: r }); setIng(String(r.resumen.ingresos_proyectados || "")); aviso(ok); return true; }
     catch (x) { aviso(x instanceof Error ? x.message : "Error", "error"); return false; }
-  }, [obraId, aviso]);
+  }, [obraId, aviso, query]);
 
   const serie = useMemo(() => (d?.meses ?? []).map((m) => ({ mes: `${nombreMes(Number(m.mes.slice(5))).slice(0, 3)} ${m.mes.slice(2, 4)}`, Facturado: Math.round(m.facturado / 1e5) / 10, Gastos: Math.round(m.gastos / 1e5) / 10 })), [d]);
   useEffect(() => {
@@ -103,7 +107,26 @@ export default function Finanzas() {
           </>
         )}>Control financiero</Titulo>
 
-      <SelectorObra className="mb-5 max-w-sm" obras={obras} valor={obraId} onChange={setObraId} />
+      <div className="mb-5 grid max-w-3xl gap-3 sm:grid-cols-[1fr_auto]">
+        <SelectorObra className="max-w-sm" obras={obras} valor={obraId} onChange={setObraId} />
+        <div className="flex items-end">
+          <Boton variante="secundario" icono={<CalendarRange className="size-4" aria-hidden />}
+            onClick={() => setCorte(corte ? null : { desde: `${hoy().slice(0, 7)}-01`, hasta: hoy() })}>
+            {corte ? "Ver todo" : "Corte por fechas"}
+          </Boton>
+        </div>
+      </div>
+      {corte && <div className="mb-5 grid max-w-xl gap-3 sm:grid-cols-2">
+        <Campo etiqueta="Desde"><Input type="date" value={corte.desde} max={corte.hasta} onChange={(e) => e.target.value && setCorte({ ...corte, desde: e.target.value })} /></Campo>
+        <Campo etiqueta="Hasta"><Input type="date" value={corte.hasta} min={corte.desde} onChange={(e) => e.target.value && setCorte({ ...corte, hasta: e.target.value })} /></Campo>
+      </div>}
+      {d?.periodo && <div className="mb-5"><Tarjeta titulo={`Corte ${fechaCorta(d.periodo.desde ?? "")} – ${fechaCorta(d.periodo.hasta ?? "")}`} sub="Solo lo que se movió en esas fechas. Los indicadores de abajo siguen siendo el acumulado de la obra.">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          <Indicador etiqueta="Facturado en el corte" valor={fmtCOP(d.periodo.facturado)} detalle={`${d.periodo.n_facturas} factura(s)`} icono={<Receipt className="size-5" aria-hidden />} />
+          <Indicador etiqueta="Gastos en el corte" valor={fmtCOP(d.periodo.gastos)} detalle={`${d.periodo.n_gastos} movimiento(s)`} icono={<Wallet className="size-5" aria-hidden />} />
+          <Indicador etiqueta="Neto del corte" valor={fmtCOP(d.periodo.neto)} tono={d.periodo.neto >= 0 ? "ok" : "error"} />
+        </div>
+      </Tarjeta></div>}
       {(error || errObras) && <Aviso tono="error">{error || errObras}</Aviso>}
       {!cargando && !obras.length && !errObras && <Vacio icono={<Wallet className="size-6" aria-hidden />} titulo="Primero cree una obra" texto="El control financiero se lleva obra por obra." />}
       {obraId && !d && !error && <div className="space-y-3"><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <Esqueleto key={i} className="h-28" />)}</div><Esqueleto className="h-64" /></div>}

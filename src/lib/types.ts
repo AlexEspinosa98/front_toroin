@@ -62,6 +62,30 @@ export type DatosOtrosies = {
   fecha_fin_base: string | null; fecha_fin_vigente: string | null; dias_prorroga: number; otrosies: OtrosiT[];
 };
 
+/** Cortes de pago congelados y préstamos del trabajador. */
+export type PrestamoT = {
+  id: string; trabajador_id: string; trabajador: string; fecha: string; concepto: string;
+  valor: number; cuota: number; saldo: number; activo: boolean; notas: string; pagado: boolean; creado: string; creado_por: string;
+};
+export type SemanaCorteT = { domingo: string; laborables: number; asistidos: number; reconocido: boolean; razon: string };
+export type TrabajoCorteT = { fecha: string; actividad: string; ubicacion: string; um: string; parte: number; tarifa: number; valor: number; pagado: boolean };
+export type DetalleCorteT = {
+  jornal: number; dias_jornal: number; dias_destajo: number; basico: number; basico_jornal: number; descansos: number;
+  promedio_diario: number; ajuste_minimo: number; sin_tarifa: number; semanas: SemanaCorteT[];
+  ausencias_justificadas: number; ausencias_injustificadas: number; trabajos: TrabajoCorteT[];
+};
+export type FilaCorteT = {
+  id: string; trabajador_id: string; nombre: string; cedula: string; cargo: string; modalidad: string;
+  dias_asistidos: number; dias_descanso: number; devengado: number; auxilio: number; salud: number; pension: number;
+  prestamo: number; otras: number; neto: number; nota: string; detalle: DetalleCorteT;
+};
+export type TotalesCorteT = { devengado: number; auxilio: number; salud: number; pension: number; prestamo: number; otras: number; neto: number; personas: number };
+export type CorteT = {
+  id: string; obra_id: string; obra: string; desde: string; hasta: string; dias: number;
+  estado: "abierto" | "cerrado"; notas: string; totales: TotalesCorteT; creado: string; creado_por: string;
+  cerrado_en: string | null; cerrado_por: string; filas?: FilaCorteT[]; avisos?: string[];
+};
+
 export type RegistroT = { id: string; obra_id: string; fecha: string; actividad_id: string; cantidad: number; personas: number; trabajadores: string[]; por_trabajador: Record<string, number>; horas_atraso: number; motivo_atraso: string | null; acciones: string; observaciones: string; fotos: string[]; creado: string };
 
 export type Alerta = { tipo: string; severidad: "alta" | "media" | "baja"; titulo: string; detalle: string; href: string };

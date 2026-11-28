@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Banknote, ChevronRight, Download, Info, Scale, TriangleAlert, Wallet } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Banknote, CalendarRange, ChevronRight, Download, Info, Lock, Scale, TriangleAlert, Wallet } from "lucide-react";
 import { api } from "@/lib/client";
 import { useSession } from "@/lib/session";
 import { descargarCSV, quincenas } from "@/lib/csv";
@@ -30,6 +31,7 @@ const nombreAct = (a: { actividad?: string; nombre?: string; ubicacion: string }
 export default function Pagos() {
   const { me } = useSession();
   const aviso = useAviso();
+  const router = useRouter();
   const h = hoy();
   const { obras, obraId, setObraId } = useObras({ todas: true });
   const [mes, setMes] = useState(h.slice(0, 7));
@@ -41,8 +43,11 @@ export default function Pagos() {
   const [tarifas, setTarifas] = useState<Tarifa[]>([]);
   const [version, setVersion] = useState(0);
   const [error, setError] = useState("");
+  const [guardando, setGuardando] = useState(false);
   const [anio, m] = mes.split("-").map(Number);
-  const [desde, hasta] = quincenas(anio, m)[per];
+  // "libre" deja escoger cualquier rango: los cortes de obra rara vez caen en quincena
+  const [rango, setRango] = useState<{ desde: string; hasta: string } | null>(null);
+  const [desde, hasta] = rango ? [rango.desde, rango.hasta] : quincenas(anio, m)[per];
   const finMes = quincenas(anio, m).mes[1].slice(8);
   const periodoTxt = `${fechaCorta(desde)} – ${fechaCorta(hasta)}`;
   const puede = !me.solo_lectura && me.licencia?.escritura && ["admin", "gerencia", "super_admin"].includes(me.rol);
@@ -84,6 +89,15 @@ export default function Pagos() {
   const totCosto = costos.reduce((s, c) => s + c.costo, 0);
   const nombreObra = (id: string) => obras.find((o) => o.id === id)?.nombre ?? "";
 
+  async function guardarCorte() {
+    setGuardando(true);
+    try {
+      const c = await api<{ id: string }>("cortes", { method: "POST", body: { desde, hasta, obra_id: obraId, notas: "" } });
+      aviso("Corte guardado. Revíselo y ciérrelo cuando esté conforme.");
+      router.push(`/cortes?abrir=${c.id}`);
+    } catch (x) { aviso(x instanceof Error ? x.message : "No se pudo guardar el corte", "error"); } finally { setGuardando(false); }
+  }
+
   const exportar = () => descargarCSV(`prenomina-${desde}_${hasta}.csv`, [
     ["Trabajador", "Cédula", "Cargo", "Modalidad", "Días trabajados", "Domingos/festivos", "Jornal o promedio diario", "Básico", "Descansos remunerados", "Ajuste al mínimo", "Devengado", "Auxilio de transporte", "Salud 4%", "Pensión 4%", "Neto a pagar"],
     ...liqs.map((x) => [x.nombre, x.cedula, x.cargo, x.modalidad === "destajo" ? "Por ejecutado" : x.modalidad === "mixta" ? "Mixto" : "Por jornal", x.dias.dias_asistidos, x.dias_descanso, Math.round(x.modalidad === "jornal" ? x.jornal : x.promedio_diario), Math.round(x.basico), Math.round(x.descansos), Math.round(x.ajuste_minimo), Math.round(x.devengado), Math.round(x.auxilio), Math.round(x.salud), Math.round(x.pension), Math.round(x.neto)]),
@@ -92,16 +106,26 @@ export default function Pagos() {
   return (
     <>
       <Titulo sub="Prenómina calculada con la asistencia y lo que cada persona hizo en la bitácora"
-        acciones={<Boton variante="secundario" icono={<Download className="size-4" aria-hidden />} onClick={exportar} disabled={!liqs.length}>Exportar prenómina</Boton>}>Pagos al personal</Titulo>
+        acciones={<>
+          <Link href="/cortes"><Boton variante="secundario" icono={<CalendarRange className="size-4" aria-hidden />}>Cortes de pago</Boton></Link>
+          <Boton variante="secundario" icono={<Download className="size-4" aria-hidden />} onClick={exportar} disabled={!liqs.length}>Exportar prenómina</Boton>
+          {puede && <Boton icono={<Lock className="size-4" aria-hidden />} onClick={guardarCorte} cargando={guardando} disabled={!liqs.length}>Guardar como corte</Boton>}
+        </>}>Pagos al personal</Titulo>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Campo etiqueta="Mes"><Input type="month" value={mes} max={h.slice(0, 7)} onChange={(e) => e.target.value && setMes(e.target.value)} /></Campo>
         <div className="flex min-w-0 flex-col gap-1.5">
           <span className="text-sm font-semibold text-texto">Periodo</span>
-          <Segmentado etiqueta="Periodo de pago" valor={per} onChange={setPer} opciones={[{ valor: "q1", texto: "1–15" }, { valor: "q2", texto: `16–${finMes}` }, { valor: "mes", texto: "Mes completo" }]} />
+          <Segmentado etiqueta="Periodo de pago" valor={rango ? "libre" : per}
+            onChange={(v) => { if (v === "libre") setRango({ desde, hasta }); else { setRango(null); setPer(v as Periodo); } }}
+            opciones={[{ valor: "q1", texto: "1–15" }, { valor: "q2", texto: `16–${finMes}` }, { valor: "mes", texto: "Mes completo" }, { valor: "libre", texto: "Fechas" }]} />
         </div>
         <SelectorObra obras={obras} valor={obraId} onChange={setObraId} todas />
       </div>
+      {rango && <div className="mt-3 grid max-w-xl gap-3 sm:grid-cols-2">
+        <Campo etiqueta="Desde"><Input type="date" value={rango.desde} max={rango.hasta} onChange={(e) => e.target.value && setRango({ ...rango, desde: e.target.value })} /></Campo>
+        <Campo etiqueta="Hasta" ayuda="Termine en domingo para que el descanso de la semana entre en el periodo."><Input type="date" value={rango.hasta} min={rango.desde} max={h} onChange={(e) => e.target.value && setRango({ ...rango, hasta: e.target.value })} /></Campo>
+      </div>}
 
       {error && <div className="mt-3"><Aviso tono="error">{error}</Aviso></div>}
       {!datos && !error && <div className="mt-4 space-y-3"><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <Esqueleto key={i} className="h-28" />)}</div><Esqueleto className="h-64" /></div>}
